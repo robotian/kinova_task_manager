@@ -22,7 +22,7 @@ public:
       std::bind(&ArmActionServer::handle_accepted, this, _1));
   }
 
-private:
+private: 
   rclcpp_action::Server<ArmTask>::SharedPtr action_server_;
 
   // Boilerplate for goal handling
