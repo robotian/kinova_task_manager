@@ -30,7 +30,7 @@ private:
 int main(int argc, char ** argv) {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<ArmActionClient>();
-  node->send_goal("case 1"); // Change to "case 2" as needed
+  node->send_goal("case 2"); // Change to "case 2" as needed
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;

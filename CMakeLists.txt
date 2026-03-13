@@ -13,6 +13,7 @@ find_package(moveit_ros_planning_interface REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(status_interfaces REQUIRED)
+find_package(moveit_task_constructor_core REQUIRED)
 
 
 add_executable(arm_server src/arm_server.cpp)
@@ -20,6 +21,7 @@ ament_target_dependencies(arm_server
   rclcpp 
   rclcpp_action 
   moveit_ros_planning_interface 
+  moveit_task_constructor_core
   status_interfaces
 )
 
@@ -35,7 +37,7 @@ install(TARGETS
   arm_server
   arm_client
   DESTINATION lib/${PROJECT_NAME})
-
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
