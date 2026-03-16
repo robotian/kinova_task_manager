@@ -310,8 +310,8 @@ private:
           auto stage = std::make_unique<mtc::stages::GenerateGraspPose>("generate grasp pose");
           stage->properties().configureInitFrom(mtc::Stage::PARENT);
           stage->properties().set("marker_ns", "grasp_pose");
-          stage->setPreGraspPose("open");
-          stage->setObject("object");
+          stage->setPreGraspPose("open_default");
+          stage->setObject(object_id);
           stage->setAngleDelta(M_PI / 12);
           stage->setMonitoredStage(current_state_ptr);  // Hook into current state
     
@@ -339,7 +339,7 @@ private:
         {
           auto stage =
               std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (hand,object)");
-          stage->allowCollisions("object",
+          stage->allowCollisions(object_id,
                                  task.getRobotModel()
                                      ->getJointModelGroup(this->hand_group_name)
                                      ->getLinkModelNamesWithCollisionGeometry(),
