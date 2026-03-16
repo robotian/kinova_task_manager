@@ -135,6 +135,26 @@ private:
     task_thread_ = std::thread(std::bind(&ArmActionServer::doTask, this, goal_handle));
   }
 
+  void setupPlanningScene()
+    {
+      moveit_msgs::msg::CollisionObject object;
+      object.id = "object";
+      object.header.frame_id = "arm_0_base_link";
+      object.primitives.resize(1);
+      object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+      object.primitives[0].dimensions = { 0.05, 0.01 };
+    
+      geometry_msgs::msg::Pose pose;
+      pose.position.x = 0.0;
+      pose.position.y = 0.3;
+      pose.position.z = 0.1;
+      pose.orientation.w = 1.0;
+      object.pose = pose;
+    
+      moveit::planning_interface::PlanningSceneInterface psi;
+      psi.applyCollisionObject(object);
+    }
+
   void patchSrdf(){
     // ------------------------------------------------------------------------
     // SRDF PATCHING (Inject <end_effector> AND <group> if missing)
@@ -206,27 +226,29 @@ private:
 
 
   mtc::Task createFakeHarvestingTask() {
-  moveit::planning_interface::PlanningSceneInterface psi;
+       const auto& object_id = "object";
+      this->setupPlanningScene();
+  // moveit::planning_interface::PlanningSceneInterface psi;
 
-  // 1. Define Object
-  shape_msgs::msg::SolidPrimitive cylinder_primitive;
-  cylinder_primitive.type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  cylinder_primitive.dimensions = { 0.05, 0.01}; 
+  // // 1. Define Object
+  // shape_msgs::msg::SolidPrimitive cylinder_primitive;
+  // cylinder_primitive.type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+  // cylinder_primitive.dimensions = { 0.05, 0.01}; 
 
-  geometry_msgs::msg::Pose pick_pose;
-  pick_pose.position.x = 0.2; // Moved closer for Gen3 Lite reachability
-  pick_pose.position.y = 0.3; 
-  pick_pose.position.z = 0.1;
-  pick_pose.orientation.w = 1.0;
+  // geometry_msgs::msg::Pose pick_pose;
+  // pick_pose.position.x = 0.2; // Moved closer for Gen3 Lite reachability
+  // pick_pose.position.y = 0.3; 
+  // pick_pose.position.z = 0.1;
+  // pick_pose.orientation.w = 1.0;
 
-  const auto& object_id = "object";
-  moveit_msgs::msg::CollisionObject object;
-  object.id = object_id;
-  object.header.frame_id = "arm_0_base_link";
-  object.primitives.push_back(cylinder_primitive);
-  object.primitive_poses.push_back(pick_pose);
-  object.operation = moveit_msgs::msg::CollisionObject::ADD;
-  psi.applyCollisionObject(object);
+  // const auto& object_id = "object";
+  // moveit_msgs::msg::CollisionObject object;
+  // object.id = object_id;
+  // object.header.frame_id = "arm_0_base_link";
+  // object.primitives.push_back(cylinder_primitive);
+  // object.primitive_poses.push_back(pick_pose);
+  // object.operation = moveit_msgs::msg::CollisionObject::ADD;
+  // psi.applyCollisionObject(object);
 
   mtc::Task task;
   task.stages()->setName("Single Harvesting Motion");
