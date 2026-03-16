@@ -1,11 +1,12 @@
 #include <memory>
 #include <thread>
+#include <atomic> // Added for shutdown flag
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 // #include <moveit/move_group_interface/move_group_interface.hpp>
 // #include <moveit/move_group_interface/move_group_interface.h>
 #include "status_interfaces/action/manipulator_task.hpp"
-
+#include "kinova_task_manager/manipulator_commands.hpp"
 
 #include <moveit/planning_scene/planning_scene.hpp>
 #include <moveit/planning_scene_interface/planning_scene_interface.hpp>
@@ -29,6 +30,7 @@
 #else
 #include <tf2_eigen/tf2_eigen.h>
 #endif
+
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("arm_task_server");
 namespace mtc = moveit::task_constructor;
@@ -58,6 +60,13 @@ public:
     );
   }
 
+  // Destructor to ensure thread is joined on shutdown
+  ~ArmActionServer() {
+    if (task_thread_.joinable()) {
+      task_thread_.join();
+    }
+  }
+
 
   rclcpp::node_interfaces::NodeBaseInterface::SharedPtr getNodeBaseInterface()
   {
@@ -70,6 +79,8 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   
+  // Clean Termination Members
+  std::thread task_thread_;
   mtc::Task task_;
 
   rclcpp_action::GoalResponse handle_goal(
@@ -80,14 +91,29 @@ private:
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
+  // rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleArmTask>) {
+  //   RCLCPP_INFO(this->get_logger(), "Cancel requested");
+  //   return rclcpp_action::CancelResponse::ACCEPT;
+  // }
+
   rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleArmTask>) {
     RCLCPP_INFO(this->get_logger(), "Cancel requested");
+    // If MTC task is running, you could call task_.stages()->clear() or similar here
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
+  // void handle_accepted(const std::shared_ptr<GoalHandleArmTask> goal_handle) {
+  //   // Detach thread to process the move command
+  //   std::thread{std::bind(&ArmActionServer::doTask, this, goal_handle)}.detach();
+  // }
+
   void handle_accepted(const std::shared_ptr<GoalHandleArmTask> goal_handle) {
-    // Detach thread to process the move command
-    std::thread{std::bind(&ArmActionServer::doTask, this, goal_handle)}.detach();
+    // JOIN previous thread before starting a new one to prevent resource leaks
+    if (task_thread_.joinable()) {
+      task_thread_.join();
+    }
+    // No longer detached
+    task_thread_ = std::thread(std::bind(&ArmActionServer::doTask, this, goal_handle));
   }
 
   mtc::Task createTask(){
@@ -331,33 +357,37 @@ private:
   void doTask(const std::shared_ptr<GoalHandleArmTask> goal_handle){
     const auto goal = goal_handle->get_goal();
     auto act_result = std::make_shared<ArmTask::Result>();
+    
+    // Safety check: is ROS still running?
+    if (!rclcpp::ok()) return;
 
-    if(goal->arm_task == "GO STOW"){
-      task_ = createGoToConfigTask("stow");
-    }else if(goal->arm_task == "GO READY"){
-      task_ = createGoToConfigTask("pre_cut_1");
-    }else if(goal->arm_task =="MOVE EEF")
-      task_ = createMoveEEFTask("blabla");    
-    else{
-      act_result->success = false;
-      return;
+    // Convert string to enum
+    kinova_task_manager::ManipulatorCommand cmd = kinova_task_manager::stringToCommand(goal->arm_task);
+
+    // Switch statement for cleaner logic
+    switch (cmd) {
+        case kinova_task_manager::ManipulatorCommand::GO_STOW:
+            RCLCPP_INFO(LOGGER, "Executing: GO STOW");
+            task_ = createGoToConfigTask("stow");
+            break;
+
+        case kinova_task_manager::ManipulatorCommand::GO_READY:
+            RCLCPP_INFO(LOGGER, "Executing: GO READY");
+            task_ = createGoToConfigTask("pre_cut_1");
+            break;
+
+        case kinova_task_manager::ManipulatorCommand::MOVE_EEF:
+            RCLCPP_INFO(LOGGER, "Executing: MOVE EEF");
+            task_ = createMoveEEFTask("default_config");
+            break;
+
+        case kinova_task_manager::ManipulatorCommand::UNKNOWN:
+        default:
+            RCLCPP_ERROR(LOGGER, "Unknown task received: %s", goal->arm_task.c_str());
+            act_result->success = false;
+            goal_handle->abort(act_result);
+            return;
     }
-
-    // TO DO: enum
-    // switch (goal->arm_task)
-    // {
-    // case "GO STOW":
-    //   /* code */
-    //   task_ = createGoToConfigTask("stow");
-    //   break;
-    // case "GO READY":
-    //   task_ = createGoToConfigTask("pre_cut_1");
-    //   break;    
-    // default:
-    //   break;
-    // }
-
-
 
     act_result->success = true;
 
@@ -372,21 +402,29 @@ private:
       return;
     }
 
+    // Check for shutdown again after init
+    if (!rclcpp::ok()) return;
+
     if (!task_.plan(5))
     {
       RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
       act_result->success = false;
+      goal_handle->abort(act_result);
       return;
     }
+
     task_.introspection().publishSolution(*task_.solutions().front());
 
     auto result = task_.execute(*task_.solutions().front());
-    if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
-    {
-      RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed");
-      act_result->success = false;
-      return;
-    }
+
+    act_result->success = (result.val == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
+
+    // if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
+    // {
+    //   RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed");
+    //   act_result->success = false;
+    //   return;
+    // }
 
     if (act_result->success) {
       goal_handle->succeed(act_result);
@@ -394,7 +432,7 @@ private:
       goal_handle->abort(act_result);
     }
 
-    return;
+    // return;
 
   }
 
@@ -453,11 +491,14 @@ int main(int argc, char ** argv) {
   auto arm_task_server = std::make_shared<ArmActionServer>(options);
   
   // Use a MultiThreadedExecutor to allow MoveGroup and Action Server to run in parallel
-  auto node = std::make_shared<ArmActionServer>(options);
+  // auto node = std::make_shared<ArmActionServer>(options);
+
   rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(arm_task_server->getNodeBaseInterface());
   executor.spin();
 
+  // Explicitly shutdown to unregister from the ROS graph
+  RCLCPP_INFO(LOGGER, "Shutting down...");
   rclcpp::shutdown();
   return 0;
 }
