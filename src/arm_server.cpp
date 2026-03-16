@@ -106,7 +106,7 @@ private:
   mtc::Task task_;
 
 
-  std::string eef_name = "manual_eef"; 
+  std::string eef_name = "arm_0_eef"; 
   std::string arm_group_name = "arm_0";
   std::string hand_group_name = "arm_0_gripper";
   std::string hand_frame = "arm_0_end_effector_link";
