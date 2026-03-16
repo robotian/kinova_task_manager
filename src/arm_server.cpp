@@ -50,6 +50,8 @@ public:
     tf_listener_(std::make_shared<tf2_ros::TransformListener>(*tf_buffer_)) 
   {
     RCLCPP_INFO(LOGGER, "Starting Manipulator Action Server...");
+
+    this->patchSrdf();
     
     this->action_server_ = rclcpp_action::create_server<ArmTask>(
       this, 
@@ -144,11 +146,15 @@ private:
     return task;
   }  
 
-  mtc::Task createMoveEEFTask(std::string config) {
+  mtc::Task createFakeHarvestingTask(){
     mtc::Task task;
-    task.stages()->setName("Move to Pose");
+    task.stages()->setName("Single Harvesting Motion");
 
 
+
+  }
+
+  void patchSrdf(){
     // ------------------------------------------------------------------------
     // SRDF PATCHING (Inject <end_effector> AND <group> if missing)
     // ------------------------------------------------------------------------
@@ -182,7 +188,13 @@ private:
     if (srdf_needs_update) {
         this->set_parameter(rclcpp::Parameter(srdf_param_name, srdf_string));
     }
+  }
 
+  mtc::Task createMoveEEFTask(std::string config) {
+    mtc::Task task;
+    task.stages()->setName("Move to Pose");
+
+    std::string eef_name = "manual_eef"; 
 
     task.loadRobotModel(shared_from_this());
 
@@ -221,14 +233,27 @@ private:
     target_pose_stage->setMonitoredStage(current_state_ptr); 
 
     geometry_msgs::msg::PoseStamped target_pose;
-    target_pose.header.frame_id = "base_link";
+    target_pose.header.frame_id = "arm_0_base_link";
     target_pose.header.stamp = this->now();
     target_pose.pose.position.x = 0.0;
-    target_pose.pose.position.y = 0.0;
-    target_pose.pose.position.z = 0.8;
+    target_pose.pose.position.y = 0.3;
+    target_pose.pose.position.z = 0.1;
 
     tf2::Quaternion q;
-    q.setRPY(0.0, 1.57, 0.0);
+    q.setRPY(-1.57, 1.57, 0.0);
+
+
+    // geometry_msgs::msg::PoseStamped target_pose;
+    // target_pose.header.frame_id = "base_link";
+    // target_pose.header.stamp = this->now();
+    // target_pose.pose.position.x = 0.0;
+    // target_pose.pose.position.y = 0.0;
+    // target_pose.pose.position.z = 0.8;
+
+    // tf2::Quaternion q;
+    // q.setRPY(0.0, 1.57, 0.0);
+
+
     target_pose.pose.orientation = tf2::toMsg(q);
 
     target_pose_stage->setPose(target_pose);
@@ -293,9 +318,17 @@ private:
   void doTask(const std::shared_ptr<GoalHandleArmTask> goal_handle){
     const auto goal = goal_handle->get_goal();
     auto act_result = std::make_shared<ArmTask::Result>();
+    auto feedback = std::make_shared<ArmTask::Feedback>(); // Create feedback object
     
     // Safety check: is ROS still running?
     if (!rclcpp::ok()) return;
+
+    // Helper lambda to send status quickly
+    auto send_feedback = [&](std::string msg) {
+        feedback->status = msg;
+        goal_handle->publish_feedback(feedback);
+        RCLCPP_INFO(LOGGER, "Feedback: %s", msg.c_str());
+    };
 
     // Convert string to enum
     kinova_task_manager::ManipulatorCommand cmd = kinova_task_manager::stringToCommand(goal->arm_task);
@@ -303,17 +336,20 @@ private:
     // Switch statement for cleaner logic
     switch (cmd) {
         case kinova_task_manager::ManipulatorCommand::GO_STOW:
-            RCLCPP_INFO(LOGGER, "Executing: GO STOW");
+            // RCLCPP_INFO(LOGGER, "Executing: GO STOW");
+            send_feedback("Initializing Task: GO STOW");
             task_ = createGoToConfigTask("stow");
             break;
 
         case kinova_task_manager::ManipulatorCommand::GO_READY:
-            RCLCPP_INFO(LOGGER, "Executing: GO READY");
+            send_feedback("Initializing Task: GO READY");
+            // RCLCPP_INFO(LOGGER, "Executing: GO READY");
             task_ = createGoToConfigTask("pre_cut_1");
             break;
 
         case kinova_task_manager::ManipulatorCommand::MOVE_EEF:
-            RCLCPP_INFO(LOGGER, "Executing: MOVE EEF");
+            // RCLCPP_INFO(LOGGER, "Executing: MOVE EEF");
+            send_feedback("Initializing Task: MOVE EEF");
             task_ = createMoveEEFTask("default_config");
             break;
 
@@ -325,94 +361,39 @@ private:
             return;
     }
 
-    act_result->success = true;
+    try {
+        send_feedback("Planning trajectory...");
+        task_.init();
+        if (!task_.plan(5)) {
+            send_feedback("Planning failed!");
+            act_result->success = false;
+            goal_handle->abort(act_result);
+            return;
+        }
 
-    try
-    {
-      task_.init();
-    }
-    catch (mtc::InitStageException& e)
-    {
-      RCLCPP_ERROR_STREAM(LOGGER, e);
-      act_result->success = false;
-      return;
-    }
+        send_feedback("Plan found. Executing movement...");
+        task_.introspection().publishSolution(*task_.solutions().front());
 
-    // Check for shutdown again after init
-    if (!rclcpp::ok()) return;
+        // Execution starts here
+        auto result = task_.execute(*task_.solutions().front());
 
-    if (!task_.plan(5))
-    {
-      RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
-      act_result->success = false;
-      goal_handle->abort(act_result);
-      return;
-    }
+        if (result.val == moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+            send_feedback("Movement completed successfully.");
+            act_result->success = true;
+            goal_handle->succeed(act_result);
+        } else {
+            send_feedback("Movement failed during execution.");
+            act_result->success = false;
+            goal_handle->abort(act_result);
+        }
 
-    task_.introspection().publishSolution(*task_.solutions().front());
-
-    auto result = task_.execute(*task_.solutions().front());
-
-    act_result->success = (result.val == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
-
-    // if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
-    // {
-    //   RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed");
-    //   act_result->success = false;
-    //   return;
-    // }
-
-    if (act_result->success) {
-      goal_handle->succeed(act_result);
-    } else {
-      goal_handle->abort(act_result);
-    }
-
-    // return;
-
-  }
-
-  void execute(const std::shared_ptr<GoalHandleArmTask> goal_handle) {
-    const auto goal = goal_handle->get_goal();
-    auto result = std::make_shared<ArmTask::Result>();
-    
-    // move_group.setMaxVelocityScalingFactor(0.5);
-    // move_group.setMaxAccelerationScalingFactor(0.5);
-
-    if (goal->arm_task == "case 1") {
-      geometry_msgs::msg::Pose target_pose;
-      target_pose.orientation.w = 1.0;
-      target_pose.position.x = 0.3;
-      target_pose.position.y = 0.0;
-      target_pose.position.z = 0.4;
-      // move_group.setPoseTarget(target_pose);
-    } 
-    else if (goal->arm_task == "case 2") {
-      // move_group.setNamedTarget("stow");
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "Unknown task: %s", goal->arm_task.c_str());
-        result->success = false;
-        goal_handle->abort(result);
-        return;
-    }
-
-    // moveit::planning_interface::MoveGroupInterface::Plan my_plan;
-    // bool success = (move_group.plan(my_plan) == moveit::core::MoveItErrorCode::SUCCESS);
-    result->success =true;
-    // if (success) {
-    //   // auto move_result = move_group.execute(my_plan);
-    //   result->success = (move_result == moveit::core::MoveItErrorCode::SUCCESS);
-    // } else {
-    //   RCLCPP_ERROR(this->get_logger(), "Planning failed");
-    //   result->success = false;
-    // }
-
-    if (result->success) {
-      goal_handle->succeed(result);
-    } else {
-      goal_handle->abort(result);
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(LOGGER, "Exception: %s", e.what());
+        act_result->success = false;
+        goal_handle->abort(act_result);
     }
   }
+
 };
 
 
@@ -426,9 +407,6 @@ int main(int argc, char ** argv) {
 
   auto arm_task_server = std::make_shared<ArmActionServer>(options);
   
-  // Use a MultiThreadedExecutor to allow MoveGroup and Action Server to run in parallel
-  // auto node = std::make_shared<ArmActionServer>(options);
-
   rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(arm_task_server->getNodeBaseInterface());
   executor.spin();
