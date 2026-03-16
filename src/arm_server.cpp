@@ -91,21 +91,11 @@ private:
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
-  // rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleArmTask>) {
-  //   RCLCPP_INFO(this->get_logger(), "Cancel requested");
-  //   return rclcpp_action::CancelResponse::ACCEPT;
-  // }
-
   rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleArmTask>) {
     RCLCPP_INFO(this->get_logger(), "Cancel requested");
     // If MTC task is running, you could call task_.stages()->clear() or similar here
     return rclcpp_action::CancelResponse::ACCEPT;
   }
-
-  // void handle_accepted(const std::shared_ptr<GoalHandleArmTask> goal_handle) {
-  //   // Detach thread to process the move command
-  //   std::thread{std::bind(&ArmActionServer::doTask, this, goal_handle)}.detach();
-  // }
 
   void handle_accepted(const std::shared_ptr<GoalHandleArmTask> goal_handle) {
     // JOIN previous thread before starting a new one to prevent resource leaks
@@ -145,7 +135,7 @@ private:
     }
     // --- 2. Move to Stow ---
     {
-        auto stage = std::make_unique<mtc::stages::MoveTo>("move to ready", sampling_planner);
+        auto stage = std::make_unique<mtc::stages::MoveTo>("move to stow", sampling_planner);
         stage->setGroup(arm_group_name);
         stage->setGoal("stow"); // Must match <group_state name="ready"> in SRDF
         task.add(std::move(stage));
@@ -153,53 +143,6 @@ private:
 
     return task;
   }  
-
-
-  // mtc::Task createMoveEEFTask(std::string config){
-  //   mtc::Task task;
-  //   task.stages()->setName("Move to Pose");
-  //   task.loadRobotModel(shared_from_this());
-  //   const auto& arm_group_name = "arm_0";
-  //   const auto& hand_group_name = "arm_0_gripper";
-  //   const auto& hand_frame = "arm_0_end_effector_link";
-
-  //   // Set task properties
-  //   task.setProperty("group", arm_group_name);
-  //   task.setProperty("eef", hand_group_name);
-  //   task.setProperty("ik_frame", hand_frame);
-
-  //   // 1. Create a stage to specify the target pose
-  //   auto target_pose_stage = std::make_unique<mtc::stages::GeneratePose>("target pose");
-  //   geometry_msgs::msg::PoseStamped target_pose;
-
-  //   // 2. Set the Frame ID (Must match your robot's URDF/TF tree, usually "base_link" or "world")
-  //   target_pose.header.frame_id = "base_link";
-  //   target_pose.header.stamp = this->now();
-
-  //   // 3. Set the Position (in meters)
-  //   target_pose.pose.position.x = 0.5;
-  //   target_pose.pose.position.y = 0.0;
-  //   target_pose.pose.position.z = 0.8;
-
-  //   // 4. Set the Orientation using Roll, Pitch, Yaw (RPY)
-  //   tf2::Quaternion q;
-  //   q.setRPY(0.0, 0.0, 0.0); // Rotate 180 degrees around Y (facing down)
-
-  //   target_pose.pose.orientation.x = q.x();
-  //   target_pose.pose.orientation.y = q.y();
-  //   target_pose.pose.orientation.z = q.z();
-  //   target_pose.pose.orientation.w = q.w();
-
-  //   target_pose_stage->setPose(target_pose); // geometry_msgs::msg::PoseStamped
-
-  //   // 2. Wrap it in a ComputeIK stage to solve for joint positions
-  //   auto wrapper = std::make_unique<mtc::stages::ComputeIK>("compute ik", std::move(target_pose_stage));
-  //   wrapper->setEndEffector(hand_frame); // The frame you want to move
-  //   wrapper->setGroup(arm_group_name);        // The planning group
-  //   wrapper->setIKFrame(hand_frame);     // Usually the same as EE
-  //   task.add(std::move(wrapper));
-  //   return task;
-  // }
 
   mtc::Task createMoveEEFTask(std::string config) {
     mtc::Task task;
@@ -255,15 +198,6 @@ private:
     task.setProperty("hand", hand_group_name);
     task.setProperty("ik_frame", hand_frame);
 
-    // const std::string arm_group_name = "arm_0";
-    // const std::string hand_group_name = "arm_0_gripper";
-    // const std::string hand_frame = "arm_0_end_effector_link";
-
-    // // Set task properties
-    // task.setProperty("group", arm_group_name);
-    // task.setProperty("eef", hand_group_name);
-    // task.setProperty("ik_frame", hand_frame);
-
     // --- NEW: Define Planners ---
     auto pipeline_planner = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
     
@@ -301,7 +235,7 @@ private:
 
     // 4. Wrap it in a ComputeIK stage
     auto wrapper = std::make_unique<mtc::stages::ComputeIK>("compute ik", std::move(target_pose_stage));
-    wrapper->setMaxIKSolutions(20);
+    wrapper->setMaxIKSolutions(30);
       wrapper->setMinSolutionDistance(0.1);
     wrapper->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" }); 
     wrapper->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
@@ -331,12 +265,14 @@ private:
 
     // --- Solvers ---
     auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
-    auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
-    auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
-    cartesian_planner->setMaxVelocityScalingFactor(0.5);
-    cartesian_planner->setMaxAccelerationScalingFactor(1.0);
-    cartesian_planner->setStepSize(.001);
-     // --- 0. Current State ---
+    // INCREASE SPEED HERE (Values between 0.0 and 1.0)
+    // 1.0 is the maximum speed defined in your joint_limits.yaml
+    sampling_planner->setMaxVelocityScalingFactor(1.0);     // Set to max speed
+    sampling_planner->setMaxAccelerationScalingFactor(1.0); // Set to max acceleration
+
+    
+
+    // --- 0. Current State ---
     mtc::Stage* current_state_ptr = nullptr;
     {
         auto stage = std::make_unique<mtc::stages::CurrentState>("current");
