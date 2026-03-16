@@ -66,7 +66,7 @@ public:
   {
     RCLCPP_INFO(LOGGER, "Starting Manipulator Action Server...");
 
-    this->eef_name = "manual_eef"; 
+    this->eef_name = "arm_0_eef"; 
     this->arm_group_name = "arm_0";
     this->hand_group_name = "arm_0_gripper";
     this->hand_frame = "arm_0_end_effector_link";
@@ -176,7 +176,7 @@ private:
     // 2. Patch 1: Add End Effector if missing
     // std::string eef_name = "manual_eef"; 
     if (!srdf_string.empty() && srdf_string.find("<end_effector") == std::string::npos) {
-        std::string eef_patch = R"(<end_effector name="manual_eef" parent_link="arm_0_end_effector_link" group="arm_0_gripper"/>)";
+        std::string eef_patch = R"(<end_effector name="arm_0_eef" parent_link="arm_0_end_effector_link" group="arm_0_gripper"/>)";
         size_t pos = srdf_string.rfind("</robot>");
         if (pos != std::string::npos) {
             srdf_string.insert(pos, eef_patch);
@@ -226,44 +226,29 @@ private:
 
 
   mtc::Task createFakeHarvestingTask() {
-       const auto& object_id = "object";
+      const auto& object_id = "object";
       this->setupPlanningScene();
-  // moveit::planning_interface::PlanningSceneInterface psi;
 
-  // // 1. Define Object
-  // shape_msgs::msg::SolidPrimitive cylinder_primitive;
-  // cylinder_primitive.type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  // cylinder_primitive.dimensions = { 0.05, 0.01}; 
+      mtc::Task task;
+      task.stages()->setName("Single Harvesting Motion");
+      task.loadRobotModel(shared_from_this());
+    
+      task.setProperty("group", this->arm_group_name);
+      task.setProperty("eef", this->eef_name);
+      task.setProperty("hand", this->hand_group_name);
+      task.setProperty("ik_frame", this->hand_frame);
 
-  // geometry_msgs::msg::Pose pick_pose;
-  // pick_pose.position.x = 0.2; // Moved closer for Gen3 Lite reachability
-  // pick_pose.position.y = 0.3; 
-  // pick_pose.position.z = 0.1;
-  // pick_pose.orientation.w = 1.0;
-
-  // const auto& object_id = "object";
-  // moveit_msgs::msg::CollisionObject object;
-  // object.id = object_id;
-  // object.header.frame_id = "arm_0_base_link";
-  // object.primitives.push_back(cylinder_primitive);
-  // object.primitive_poses.push_back(pick_pose);
-  // object.operation = moveit_msgs::msg::CollisionObject::ADD;
-  // psi.applyCollisionObject(object);
-
-  mtc::Task task;
-  task.stages()->setName("Single Harvesting Motion");
-  task.loadRobotModel(shared_from_this());
-
-  task.setProperty("group", this->arm_group_name);
-  task.setProperty("eef", this->eef_name);
-  task.setProperty("hand", this->hand_group_name);
-  task.setProperty("ik_frame", this->hand_frame);
-
-  // Planners
-  auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
-  auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
-  auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
-
+      // Planners
+      auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
+      sampling_planner->setMaxVelocityScalingFactor(1.0);
+      sampling_planner->setMaxAccelerationScalingFactor(1.0);
+    
+      auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
+      auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
+      cartesian_planner->setMaxVelocityScalingFactor(0.5);
+      cartesian_planner->setMaxAccelerationScalingFactor(1.0);
+      cartesian_planner->setStepSize(.001);
+      
   // --- STAGE 1: Current State ---
   mtc::Stage* current_state_ptr = nullptr;
   auto current_state = std::make_unique<mtc::stages::CurrentState>("current");
