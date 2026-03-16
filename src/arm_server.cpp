@@ -879,7 +879,7 @@ private:
 
     // Set task properties
     task.setProperty("group", this->arm_group_name);
-    task.setProperty("eef", this->hand_group_name);
+    // task.setProperty("eef", this->hand_group_name);
     task.setProperty("ik_frame", this->hand_frame);
 
     // --- Solvers ---
