@@ -10,6 +10,7 @@ enum class ManipulatorCommand {
     GO_STOW,
     GO_READY,
     MOVE_EEF,
+    START_HARVEST,
     UNKNOWN
 };
 
@@ -21,7 +22,8 @@ inline ManipulatorCommand stringToCommand(const std::string& task_str) {
     static const std::unordered_map<std::string, ManipulatorCommand> command_map = {
         {"GO STOW",  ManipulatorCommand::GO_STOW},
         {"GO READY", ManipulatorCommand::GO_READY},
-        {"MOVE EEF", ManipulatorCommand::MOVE_EEF}
+        {"MOVE EEF", ManipulatorCommand::MOVE_EEF},
+        {"START HARVEST", ManipulatorCommand::START_HARVEST}
     };
 
     auto it = command_map.find(task_str);
