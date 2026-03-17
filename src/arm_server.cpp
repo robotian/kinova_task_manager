@@ -273,7 +273,7 @@ private:
 
       auto stage_move_to_pick = std::make_unique<mtc::stages::Connect>(
       "move to pick",
-      mtc::stages::Connect::GroupPlannerVector{ { this->arm_group_name, sampling_planner } });
+      mtc::stages::Connect::GroupPlannerVector{ { this->arm_group_name, sampling_planner }, { this->hand_group_name, interpolation_planner } });
       stage_move_to_pick->setTimeout(5.0);
       stage_move_to_pick->properties().configureInitFrom(mtc::Stage::PARENT);
       task.add(std::move(stage_move_to_pick));
