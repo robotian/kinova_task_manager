@@ -608,7 +608,9 @@ private:
 
         case kinova_task_manager::ManipulatorCommand::START_HARVEST:
             send_feedback("Initializing Task: START HARVEST");
+			// set the scene
             task = createFakeHarvestingTask();
+			// reset the scene
             break;
 
         case kinova_task_manager::ManipulatorCommand::UNKNOWN:
