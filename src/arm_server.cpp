@@ -60,9 +60,9 @@ class ArmActionServer : public rclcpp::Node
 {
 public:
   ArmActionServer(const rclcpp::NodeOptions& options) : 
-    rclcpp::Node("arm_task_server", options),
-    tf_buffer_(std::make_shared<tf2_ros::Buffer>(this->get_clock())),
-    tf_listener_(std::make_shared<tf2_ros::TransformListener>(*tf_buffer_)) 
+    rclcpp::Node("arm_task_server", options)
+    // ,tf_buffer_(std::make_shared<tf2_ros::Buffer>(this->get_clock())),
+    // tf_listener_(std::make_shared<tf2_ros::TransformListener>(*tf_buffer_)) 
   {
     RCLCPP_INFO(LOGGER, "Starting Manipulator Action Server...");
 
