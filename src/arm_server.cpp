@@ -336,6 +336,14 @@ private:
           grasp->insert(std::move(wrapper));
         }
 
+          // try this, not to add the allowCollisions methods. the object is used only for the path generation.
+          {
+               auto stage =
+              std::make_unique<mtc::stages::ModifyPlanningScene>("remove the object");
+              stage->removeObject(object_id);
+              grasp->insert(std::move(stage));
+          }
+        /*
         {
           auto stage =
               std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (hand,object)");
@@ -344,7 +352,7 @@ private:
                                      ->getJointModelGroup(this->hand_group_name),  //https://docs.ros.org/en/noetic/api/moveit_task_constructor_core/html/cpp/modify__planning__scene_8cpp_source.html
                                  true);
           grasp->insert(std::move(stage));
-        }
+        }*/
 
         {
           auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", interpolation_planner);
@@ -352,16 +360,15 @@ private:
           stage->setGoal("close");
           grasp->insert(std::move(stage));
         }
-    
+        /*
         {
           auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
           stage->attachObject(object_id, this->hand_frame);
           attach_object_stage = stage.get();
           grasp->insert(std::move(stage));
-        }
+        }*/
 
         {
-          // clang-format off
           auto stage =
               std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
           stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
