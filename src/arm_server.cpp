@@ -264,9 +264,11 @@ private:
       task.add(std::move(open_hand));
 
       // --- STAGE 3: Move to Ready ---
+      mtc::Stage* ready_state_ptr = nullptr;
       auto move_ready = std::make_unique<mtc::stages::MoveTo>("move to ready", sampling_planner);
       move_ready->setGroup(this->arm_group_name);
       move_ready->setGoal("pre_cut_1");
+      ready_state_ptr = move_ready.get();
       task.add(std::move(move_ready));
 
       auto stage_move_to_pick = std::make_unique<mtc::stages::Connect>(
@@ -313,7 +315,7 @@ private:
           stage->setPreGraspPose("open_default");
           stage->setObject(object_id);
           stage->setAngleDelta(M_PI / 12);
-          stage->setMonitoredStage(current_state_ptr);  // Hook into current state
+          stage->setMonitoredStage(ready_state_ptr);  // Hook into current state
     
           // This is the transform from the object frame to the end-effector frame
           Eigen::Isometry3d grasp_frame_transform;
