@@ -248,7 +248,7 @@ private:
       auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
       cartesian_planner->setMaxVelocityScalingFactor(0.5);
       cartesian_planner->setMaxAccelerationScalingFactor(1.0);
-      cartesian_planner->setStepSize(.001);
+      cartesian_planner->setStepSize(.01);
       
       // --- STAGE 1: Current State ---
       mtc::Stage* current_state_ptr = nullptr;
