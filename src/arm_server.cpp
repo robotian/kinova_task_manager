@@ -111,6 +111,15 @@ private:
   std::string hand_group_name = "arm_0_gripper";
   std::string hand_frame = "arm_0_end_effector_link";
 
+  std::vector<std::string> missing_links ={
+    "chassis_link", 
+    "right_suspension_beam_link",
+    "camera_0_camera_center",
+    "arch_link",
+    "fath_pivot_0_link",
+    "estop_link",
+    "wireless_charger_link"    
+  };
 
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID &, 
@@ -146,7 +155,7 @@ private:
     
       geometry_msgs::msg::Pose pose;
       pose.position.x = 0.0;
-      pose.position.y = 0.3;
+      pose.position.y = 0.4;
       pose.position.z = 0.1;
       pose.orientation.w = 1.0;
       object.pose = pose;
@@ -154,6 +163,7 @@ private:
       moveit::planning_interface::PlanningSceneInterface psi;
       psi.applyCollisionObject(object);
         rclcpp::sleep_for(std::chrono::milliseconds(500));
+      RCLCPP_INFO(this->get_logger(), "An collision object is created.");
     }
 
   void patchSrdf(){
@@ -252,49 +262,68 @@ private:
       
       // --- STAGE 1: Current State ---
       mtc::Stage* current_state_ptr = nullptr;
-      auto current_state = std::make_unique<mtc::stages::CurrentState>("current");
-      current_state_ptr = current_state.get();
-      task.add(std::move(current_state));
+      {
+        auto current_state = std::make_unique<mtc::stages::CurrentState>("current");
+        current_state_ptr = current_state.get();
+        task.add(std::move(current_state));
+      }
+      // cartesian planner testing
+      // {
+      //   auto stage =
+      //       std::make_unique<mtc::stages::MoveRelative>("approach object", cartesian_planner);        
+      //   stage->properties().set("marker_ns", "approach_object");
+      //   stage->properties().set("link", this->hand_frame);
+      //   stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+      //   stage->setMinMaxDistance(0.05, 0.15); 
+  
+      //   // Set hand forward direction
+      //   geometry_msgs::msg::Vector3Stamped vec;
+      //   vec.header.frame_id = this->hand_frame;
+      //   vec.vector.z = 1.0;
+      //   stage->setDirection(vec);
+      //   task.add(std::move(stage));
+      // }
 
       // --- STAGE 2: Open Hand ---
-      auto open_hand = std::make_unique<mtc::stages::MoveTo>("open hand", sampling_planner);
+      auto open_hand = std::make_unique<mtc::stages::MoveTo>("open hand", interpolation_planner);
       open_hand->setGroup(this->hand_group_name);
       open_hand->setGoal("open_default");
       //auto* open_hand_ptr = open_hand.get(); // Capture for monitoring
       task.add(std::move(open_hand));
 
       // --- STAGE 3: Move to Ready ---
-      mtc::Stage* ready_state_ptr = nullptr;
-      auto move_ready = std::make_unique<mtc::stages::MoveTo>("move to ready", sampling_planner);
-      move_ready->setGroup(this->arm_group_name);
-      move_ready->setGoal("pre_cut_1");
-      ready_state_ptr = move_ready.get();
-      task.add(std::move(move_ready));
+      // mtc::Stage* ready_state_ptr = nullptr;
+      // auto move_ready = std::make_unique<mtc::stages::MoveTo>("move to ready", sampling_planner);
+      // move_ready->setGroup(this->arm_group_name);
+      // move_ready->setGoal("pre_cut_1");
+      // ready_state_ptr = move_ready.get();
+      // task.add(std::move(move_ready));
 
-      auto stage_move_to_pick = std::make_unique<mtc::stages::Connect>(
-      "move to pick",
-      mtc::stages::Connect::GroupPlannerVector{ { this->arm_group_name, sampling_planner }, { this->hand_group_name, interpolation_planner } });
-      stage_move_to_pick->setTimeout(5.0);
-      stage_move_to_pick->properties().configureInitFrom(mtc::Stage::PARENT);
-      task.add(std::move(stage_move_to_pick));
+      {
+        auto stage_move_to_pick = std::make_unique<mtc::stages::Connect>(
+        "move to pick",
+        // mtc::stages::Connect::GroupPlannerVector{ { this->arm_group_name, sampling_planner }});
+        mtc::stages::Connect::GroupPlannerVector{ { this->arm_group_name, sampling_planner }, { this->hand_group_name, interpolation_planner } });
+        stage_move_to_pick->setTimeout(15.0);
+        stage_move_to_pick->properties().configureInitFrom(mtc::Stage::PARENT);
+        task.add(std::move(stage_move_to_pick));
+      }
       
 
-       mtc::Stage* attach_object_stage = nullptr;  // Forward attach_object_stage to place pose generator
+      //  mtc::Stage* attach_object_stage = nullptr;  // Forward attach_object_stage to place pose generator
 
       {
         auto grasp = std::make_unique<mtc::SerialContainer>("pick object");
         task.properties().exposeTo(grasp->properties(), { "eef", "group", "ik_frame" });
-        // clang-format off
         grasp->properties().configureInitFrom(mtc::Stage::PARENT,
                                               { "eef", "group", "ik_frame" });
         {
-          // clang-format off
           auto stage =
               std::make_unique<mtc::stages::MoveRelative>("approach object", cartesian_planner);        
           stage->properties().set("marker_ns", "approach_object");
-          stage->properties().set("link", this->hand_frame);
+          // stage->properties().set("link", this->hand_frame);
           stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-          stage->setMinMaxDistance(0.1, 0.15); 
+          stage->setMinMaxDistance(0.01, 0.15); 
     
           // Set hand forward direction
           geometry_msgs::msg::Vector3Stamped vec;
@@ -304,9 +333,7 @@ private:
           grasp->insert(std::move(stage));
         }
 
-          /****************************************************
-      ---- *               Generate Grasp Pose                *
-         ***************************************************/
+
         {
           // Sample grasp pose
           auto stage = std::make_unique<mtc::stages::GenerateGraspPose>("generate grasp pose");
@@ -315,76 +342,66 @@ private:
           stage->setPreGraspPose("open_default");
           stage->setObject(object_id);
           stage->setAngleDelta(M_PI / 12);
-          stage->setMonitoredStage(ready_state_ptr);  // Hook into current state
-    
-          // This is the transform from the object frame to the end-effector frame
-          Eigen::Isometry3d grasp_frame_transform;
-          Eigen::Quaterniond q = Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitX()) *
-                                 Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitY()) *
-                                 Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ());
-          grasp_frame_transform.linear() = q.matrix();
-          grasp_frame_transform.translation().z() = 0.1;
+          stage->setMonitoredStage(current_state_ptr);  // Hook into current state
     
           // Compute IK
           // clang-format off
-          auto wrapper =
-              std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
-          // clang-format on
-          wrapper->setMaxIKSolutions(8);
-          wrapper->setMinSolutionDistance(1.0);
-          wrapper->setIKFrame(grasp_frame_transform, this->hand_frame);
-          wrapper->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
+          auto wrapper = std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
+          wrapper->setMaxIKSolutions(20);
+          wrapper->setMinSolutionDistance(0.1);
+          std::vector<double> grasp_frame_transform = {0.0, 0.0, 0.14, 1.571, -1.571, 1.571};
+          wrapper->setIKFrame(vectorToEigen(grasp_frame_transform), this->hand_frame);
+          
+          wrapper->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" }); 
           wrapper->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
           grasp->insert(std::move(wrapper));
         }
+       
+        // {
+        //   auto stage =
+        //       std::make_unique<mtc::stages::ModifyPlanningScene>("allow collisions");
+        //   stage->allowCollisions(object_id,
+        //                          task.getRobotModel()
+        //                              ->getJointModelGroup(this->hand_group_name)
+        //                              ->getLinkModelNamesWithCollisionGeometry(),  //https://docs.ros.org/en/noetic/api/moveit_task_constructor_core/html/cpp/modify__planning__scene_8cpp_source.html
+        //                          true);
+        //   // misc. links
+        //   for(const auto& link: missing_links){
+        //     stage->allowCollisions(link,task.getRobotModel()->getLinkModelNamesWithCollisionGeometry(), true);
+        //   }
+        //   grasp->insert(std::move(stage));
+        // }
 
-          // try this, not to add the allowCollisions methods. the object is used only for the path generation.
-          {
-               auto stage =
-              std::make_unique<mtc::stages::ModifyPlanningScene>("remove the object");
-              stage->removeObject(object_id);
-              grasp->insert(std::move(stage));
-          }
-        /*
-        {
-          auto stage =
-              std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (hand,object)");
-          stage->allowCollisions(object_id,
-                                 task.getRobotModel()
-                                     ->getJointModelGroup(this->hand_group_name),  //https://docs.ros.org/en/noetic/api/moveit_task_constructor_core/html/cpp/modify__planning__scene_8cpp_source.html
-                                 true);
-          grasp->insert(std::move(stage));
-        }*/
+        // {
+        //   auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", interpolation_planner);
+        //   stage->setGroup(this->hand_group_name);
+        //   stage->setGoal("close");
+        //   grasp->insert(std::move(stage));
+        // }
+        
+        // {
+        //   auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
+        //   stage->attachObject(object_id, this->hand_frame);
+        //   // attach_object_stage = stage.get();
+        //   grasp->insert(std::move(stage));
+        // }
 
-        {
-          auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", interpolation_planner);
-          stage->setGroup(this->hand_group_name);
-          stage->setGoal("close");
-          grasp->insert(std::move(stage));
-        }
-        /*
-        {
-          auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
-          stage->attachObject(object_id, this->hand_frame);
-          attach_object_stage = stage.get();
-          grasp->insert(std::move(stage));
-        }*/
-
-        {
-          auto stage =
-              std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
-          stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-          stage->setMinMaxDistance(0.1, 0.3);
-          stage->setIKFrame(this->hand_frame);
-          stage->properties().set("marker_ns", "lift_object");
+        // {
+        //   auto stage =
+        //       std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
+        //   stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+        //   stage->setMinMaxDistance(0.1, 0.3);
+        //   stage->setIKFrame(this->hand_frame);
+        //   stage->properties().set("marker_ns", "lift_object");
     
-          // Set upward direction
-          geometry_msgs::msg::Vector3Stamped vec;
-          vec.header.frame_id = "map";
-          vec.vector.z = 1.0;
-          stage->setDirection(vec);
-          grasp->insert(std::move(stage));
-        }
+        //   // Set upward direction
+        //   geometry_msgs::msg::Vector3Stamped vec;
+        //   vec.header.frame_id = "map";
+        //   vec.vector.z = 1.0;
+        //   stage->setDirection(vec);
+        //   grasp->insert(std::move(stage));
+        // }
+
         task.add(std::move(grasp));
       }
 
