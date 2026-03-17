@@ -341,8 +341,7 @@ private:
               std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (hand,object)");
           stage->allowCollisions(object_id,
                                  task.getRobotModel()
-                                     ->getJointModelGroup(this->hand_group_name)
-                                     ->getLinkModelNamesWithCollisionGeometry(),
+                                     ->getJointModelGroup(this->hand_group_name),  //https://docs.ros.org/en/noetic/api/moveit_task_constructor_core/html/cpp/modify__planning__scene_8cpp_source.html
                                  true);
           grasp->insert(std::move(stage));
         }
