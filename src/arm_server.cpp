@@ -189,7 +189,7 @@ private:
         planning_scene_interface.removeCollisionObjects({object_id});
         
         // Optional: If you want to be 100% sure it's gone before moving the arm:
-        // rclcpp::sleep_for(std::chrono::milliseconds(100)); 
+        rclcpp::sleep_for(std::chrono::milliseconds(100)); 
     } else {
         RCLCPP_WARN(this->get_logger(), "Object '%s' does not exist in the planning scene. Skipping removal.", object_id.c_str());
     }
@@ -201,40 +201,51 @@ private:
   void add_collision_object(const std::string& object_id) {
     moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
 
-    // 1. Create the collision object message
-    moveit_msgs::msg::CollisionObject collision_object;
-    collision_object.header.frame_id = "arm_0_base_link"; // Use your robot's base frame
-    collision_object.id = object_id;
+     // 1. Get a list of all objects currently in the scene
+    std::vector<std::string> object_ids = planning_scene_interface.getKnownObjectNames();
 
-    // collision_object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-    // collision_object.primitives[0].dimensions = { 0.05, 0.01 };
+    // 2. Check if our target ID is in that list
+    auto it = std::find(object_ids.begin(), object_ids.end(), object_id);
+    if (it != object_ids.end()) {
+      RCLCPP_INFO(this->get_logger(), "Object '%s' already exists. ", object_id.c_str());
+      return;
+    }else{
+      // 1. Create the collision object message
+      moveit_msgs::msg::CollisionObject collision_object;
+      collision_object.header.frame_id = "arm_0_base_link"; // Use your robot's base frame
+      collision_object.id = object_id;
 
-    // 2. Define the shape (a box)
-    shape_msgs::msg::SolidPrimitive primitive;
-    primitive.type = primitive.CYLINDER;
-    primitive.dimensions[primitive.CYLINDER_HEIGHT] = 0.05;
-    primitive.dimensions[primitive.CYLINDER_RADIUS] = 0.01;
+      // collision_object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+      // collision_object.primitives[0].dimensions = { 0.05, 0.01 };
 
-    // 3. Define the pose of the object
-    geometry_msgs::msg::Pose pose;
-    pose.position.x = 0.0;
-    pose.position.y = 0.3;
-    pose.position.z = 0.2;
-    pose.orientation.w = 1.0;
-    collision_object.pose = pose;
+      // 2. Define the shape (a box)
+      shape_msgs::msg::SolidPrimitive primitive;
+      primitive.type = primitive.CYLINDER;
+      primitive.dimensions[primitive.CYLINDER_HEIGHT] = 0.05;
+      primitive.dimensions[primitive.CYLINDER_RADIUS] = 0.01;
 
-    // 4. Add the shape and pose to the object
-    collision_object.primitives.push_back(primitive);
-    collision_object.primitive_poses.push_back(pose);
-    collision_object.operation = collision_object.ADD;
+      // 3. Define the pose of the object
+      geometry_msgs::msg::Pose pose;
+      pose.position.x = 0.0;
+      pose.position.y = 0.3;
+      pose.position.z = 0.2;
+      pose.orientation.w = 1.0;
+      collision_object.pose = pose;
 
-    // 5. Apply the object to the planning scene
-    // std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
-    // collision_objects.push_back(collision_object);
-    
-    RCLCPP_INFO(this->get_logger(), "Adding object '%s' to the planning scene", object_id.c_str());
-    // planning_scene_interface.addCollisionObjects(collision_objects);
-    planning_scene_interface.applyCollisionObject(collision_object);
+      // 4. Add the shape and pose to the object
+      collision_object.primitives.push_back(primitive);
+      collision_object.primitive_poses.push_back(pose);
+      collision_object.operation = collision_object.ADD;
+
+      // 5. Apply the object to the planning scene
+      // std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
+      // collision_objects.push_back(collision_object);
+      
+      RCLCPP_INFO(this->get_logger(), "Adding object '%s' to the planning scene", object_id.c_str());
+      // planning_scene_interface.addCollisionObjects(collision_objects);
+      planning_scene_interface.applyCollisionObject(collision_object);
+      rclcpp::sleep_for(std::chrono::milliseconds(100)); 
+    }
   }
 
   void patchSrdf(){
@@ -308,9 +319,6 @@ private:
 
 
   mtc::Task createFakeHarvestingTask(const std::string& object_id) {
-      // const auto& object_id = "object";
-      // this->setupPlanningScene();
-
       mtc::Task task;
       task.stages()->setName("Single Harvesting Motion");
       task.loadRobotModel(shared_from_this());
@@ -687,6 +695,7 @@ private:
 
         // Execution starts here
         auto result = task.execute(*task.solutions().front());
+        remove_collision_object(object_id);
 
         if (result.val == moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
             send_feedback("Movement completed successfully.");
@@ -703,7 +712,7 @@ private:
         act_result->success = false;
         goal_handle->abort(act_result);
     }
-    remove_collision_object(object_id);
+    
   }
 
 };

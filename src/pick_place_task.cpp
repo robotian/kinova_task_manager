@@ -35,11 +35,21 @@
 */
 
 #include <Eigen/Geometry>
-#include <moveit_task_constructor_demo/pick_place_task.h>
+#include <kinova_task_manager/pick_place_task.h>
 #include <geometry_msgs/msg/pose.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_task_constructor_demo");
+
+std::vector<std::string> a300_missing_links ={
+	"chassis_link", 
+	"right_suspension_beam_link",
+	"camera_0_camera_center",
+	"arch_link",
+	"fath_pivot_0_link",
+	"estop_link",
+	"wireless_charger_link"    
+};
 
 namespace {
 Eigen::Isometry3d vectorToEigen(const std::vector<double>& values) {
@@ -90,8 +100,13 @@ moveit_msgs::msg::CollisionObject createObject(const pick_place_task_demo::Param
 
 void setupDemoScene(const pick_place_task_demo::Params& params) {
 	// Add table and object to planning scene
+	RCLCPP_INFO(LOGGER, "Setting the planning scene");
 	rclcpp::sleep_for(std::chrono::microseconds(100));  // Wait for ApplyPlanningScene service
 	moveit::planning_interface::PlanningSceneInterface psi;
+
+	std::vector<std::string> object_ids = psi.getKnownObjectNames();
+	psi.removeCollisionObjects({object_ids});
+
 	if (params.spawn_table)
 		spawnObject(psi, createTable(params));
 	spawnObject(psi, createObject(params));
@@ -117,6 +132,10 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 	// Sampling planner
 	auto sampling_planner = std::make_shared<solvers::PipelinePlanner>(node);
 	sampling_planner->setProperty("goal_joint_tolerance", 1e-5);
+	sampling_planner->setMaxVelocityScalingFactor(1.0);
+    sampling_planner->setMaxAccelerationScalingFactor(1.0);
+
+	auto interpolation_planner = std::make_shared<solvers::JointInterpolationPlanner>();
 
 	// Cartesian planner
 	auto cartesian_planner = std::make_shared<solvers::CartesianPath>();
@@ -145,13 +164,15 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 		applicability_filter->setPredicate([object = params.object_name](const SolutionBase& s, std::string& comment) {
 			if (s.start()->scene()->getCurrentState().hasAttachedBody(object)) {
 				comment = "object with id '" + object + "' is already attached and cannot be picked";
+
+
 				return false;
 			}
 			return true;
 		});
 		t.add(std::move(applicability_filter));
 	}
-
+	
 	/****************************************************
 	 *                                                  *
 	 *               Open Hand                          *
@@ -159,7 +180,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 	 ***************************************************/
 	Stage* initial_state_ptr = nullptr;
 	{
-		auto stage = std::make_unique<stages::MoveTo>("open hand", sampling_planner);
+		auto stage = std::make_unique<stages::MoveTo>("open hand", interpolation_planner);
 		stage->setGroup(params.hand_group_name);
 		stage->setGoal(params.hand_open_pose);
 		initial_state_ptr = stage.get();  // remember start state for monitoring grasp pose generator
@@ -174,7 +195,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 	// Connect initial open-hand state with pre-grasp pose defined in the following
 	{
 		stages::Connect::GroupPlannerVector planners = { { params.arm_group_name, sampling_planner },
-			                                              { params.hand_group_name, sampling_planner } };
+			                                              { params.hand_group_name, interpolation_planner } };
 		auto stage = std::make_unique<stages::Connect>("move to pick", planners);
 		stage->setTimeout(5.0);
 		stage->properties().configureInitFrom(Stage::PARENT);
@@ -193,24 +214,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 		t.properties().exposeTo(grasp->properties(), { "eef", "hand", "group", "ik_frame" });
 		grasp->properties().configureInitFrom(Stage::PARENT, { "eef", "hand", "group", "ik_frame" });
 
-		/****************************************************
-  ---- *               Approach Object                    *
-		 ***************************************************/
-		{
-			// Move the eef link forward along its z-axis by an amount within the given min-max range
-			auto stage = std::make_unique<stages::MoveRelative>("approach object", cartesian_planner);
-			stage->properties().set("marker_ns", "approach_object");
-			stage->properties().set("link", params.hand_frame);  // link to perform IK for
-			stage->properties().configureInitFrom(Stage::PARENT, { "group" });  // inherit group from parent stage
-			stage->setMinMaxDistance(params.approach_object_min_dist, params.approach_object_max_dist);
-
-			// Set hand forward direction
-			geometry_msgs::msg::Vector3Stamped vec;
-			vec.header.frame_id = params.hand_frame;
-			vec.vector.z = 1.0;
-			stage->setDirection(vec);
-			grasp->insert(std::move(stage));
-		}
+		
 
 		/****************************************************
   ---- *               Generate Grasp Pose                *
@@ -238,6 +242,25 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 		}
 
 		/****************************************************
+  ---- *               Approach Object                    *
+		 ***************************************************/
+		{
+			// Move the eef link forward along its z-axis by an amount within the given min-max range
+			auto stage = std::make_unique<stages::MoveRelative>("approach object", cartesian_planner);
+			stage->properties().set("marker_ns", "approach_object");
+			stage->properties().set("link", params.hand_frame);  // link to perform IK for
+			stage->properties().configureInitFrom(Stage::PARENT, { "group" });  // inherit group from parent stage
+			stage->setMinMaxDistance(params.approach_object_min_dist, params.approach_object_max_dist);
+
+			// Set hand forward direction
+			geometry_msgs::msg::Vector3Stamped vec;
+			vec.header.frame_id = params.hand_frame;
+			vec.vector.z = 1.0;
+			stage->setDirection(vec);
+			grasp->insert(std::move(stage));
+		}
+
+		/****************************************************
   ---- *               Allow Collision (hand object)   *
 		 ***************************************************/
 		{
@@ -247,6 +270,10 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 			    params.object_name,
 			    t.getRobotModel()->getJointModelGroup(params.hand_group_name)->getLinkModelNamesWithCollisionGeometry(),
 			    true);
+			// misc. links
+			for(const auto& link: a300_missing_links){
+				stage->allowCollisions(link,t.getRobotModel()->getLinkModelNamesWithCollisionGeometry(), true);
+			}
 			grasp->insert(std::move(stage));
 		}
 
@@ -254,7 +281,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
   ---- *               Close Hand                      *
 		 ***************************************************/
 		{
-			auto stage = std::make_unique<stages::MoveTo>("close hand", sampling_planner);
+			auto stage = std::make_unique<stages::MoveTo>("close hand", interpolation_planner);
 			stage->setGroup(params.hand_group_name);
 			stage->setGoal(params.hand_close_pose);
 			grasp->insert(std::move(stage));
@@ -299,11 +326,11 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 		/****************************************************
   .... *               Forbid collision (object support)  *
 		 ***************************************************/
-		{
-			auto stage = std::make_unique<stages::ModifyPlanningScene>("forbid collision (object,surface)");
-			stage->allowCollisions({ params.object_name }, { params.surface_link }, false);
-			grasp->insert(std::move(stage));
-		}
+		// {
+		// 	auto stage = std::make_unique<stages::ModifyPlanningScene>("forbid collision (object,surface)");
+		// 	stage->allowCollisions({ params.object_name }, { params.surface_link }, false);
+		// 	grasp->insert(std::move(stage));
+		// }
 
 		pick_stage_ptr = grasp.get();  // remember for monitoring place pose generator
 
@@ -337,24 +364,6 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 		place->properties().configureInitFrom(Stage::PARENT, { "eef", "hand", "group" });
 
 		/******************************************************
-  ---- *          Lower Object                              *
-		 *****************************************************/
-		{
-			auto stage = std::make_unique<stages::MoveRelative>("lower object", cartesian_planner);
-			stage->properties().set("marker_ns", "lower_object");
-			stage->properties().set("link", params.hand_frame);
-			stage->properties().configureInitFrom(Stage::PARENT, { "group" });
-			stage->setMinMaxDistance(.03, .13);
-
-			// Set downward direction
-			geometry_msgs::msg::Vector3Stamped vec;
-			vec.header.frame_id = params.world_frame;
-			vec.vector.z = -1.0;
-			stage->setDirection(vec);
-			place->insert(std::move(stage));
-		}
-
-		/******************************************************
   ---- *          Generate Place Pose                       *
 		 *****************************************************/
 		{
@@ -379,6 +388,24 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 			wrapper->properties().configureInitFrom(Stage::PARENT, { "eef", "group" });
 			wrapper->properties().configureInitFrom(Stage::INTERFACE, { "target_pose" });
 			place->insert(std::move(wrapper));
+		}
+
+				/******************************************************
+  ---- *          Lower Object                              *
+		 *****************************************************/
+		{
+			auto stage = std::make_unique<stages::MoveRelative>("lower object", cartesian_planner);
+			stage->properties().set("marker_ns", "lower_object");
+			stage->properties().set("link", params.hand_frame);
+			stage->properties().configureInitFrom(Stage::PARENT, { "group" });
+			stage->setMinMaxDistance(.03, .13);
+
+			// Set downward direction
+			geometry_msgs::msg::Vector3Stamped vec;
+			vec.header.frame_id = params.world_frame;
+			vec.vector.z = -1.0;
+			stage->setDirection(vec);
+			place->insert(std::move(stage));
 		}
 
 		/******************************************************
@@ -416,7 +443,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 		{
 			auto stage = std::make_unique<stages::MoveRelative>("retreat after place", cartesian_planner);
 			stage->properties().configureInitFrom(Stage::PARENT, { "group" });
-			stage->setMinMaxDistance(.12, .25);
+			stage->setMinMaxDistance(.05, .15);
 			stage->setIKFrame(params.hand_frame);
 			stage->properties().set("marker_ns", "retreat");
 			geometry_msgs::msg::Vector3Stamped vec;

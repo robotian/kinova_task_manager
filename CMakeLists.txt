@@ -7,17 +7,62 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(moveit_common REQUIRED)
+moveit_package()
+find_package(generate_parameter_library REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
-find_package(moveit_ros_planning_interface REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(status_interfaces REQUIRED)
-find_package(moveit_task_constructor_core REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
+find_package(moveit_core REQUIRED)
+find_package(moveit_ros_planning REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_task_constructor_msgs REQUIRED)
+find_package(moveit_task_constructor_core REQUIRED)
 
+# pick and place
+add_library(${PROJECT_NAME}_pick_place_task SHARED src/pick_place_task.cpp)
+target_link_libraries(${PROJECT_NAME}_pick_place_task ${moveit_task_constructor_core_TARGETS})
+install(TARGETS ${PROJECT_NAME}_pick_place_task
+	ARCHIVE DESTINATION lib
+	LIBRARY DESTINATION lib
+	RUNTIME DESTINATION lib/${PROJECT_NAME})
+include_directories(include)
+
+# declare a demo consisting of a single cpp file
+function(demo name)
+	add_executable(${PROJECT_NAME}_${name} src/${name}.cpp)
+	set(parameter_filename ${name}_parameters)
+	if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/${parameter_filename}.yaml)
+		generate_parameter_library(${parameter_filename} src/${parameter_filename}.yaml)
+		target_link_libraries(${PROJECT_NAME}_${name} ${parameter_filename})
+	endif()
+	target_link_libraries(${PROJECT_NAME}_${name} ${moveit_task_constructor_core_TARGETS})
+	set_target_properties(${PROJECT_NAME}_${name} PROPERTIES OUTPUT_NAME ${name} PREFIX "")
+	install(TARGETS ${PROJECT_NAME}_${name}
+		ARCHIVE DESTINATION lib
+		LIBRARY DESTINATION lib
+		RUNTIME DESTINATION lib/${PROJECT_NAME}
+	)
+endfunction()
+
+# demo(cartesian)
+# demo(modular)
+# demo(alternative_path_costs)
+# demo(ik_clearance_cost)
+# demo(fallbacks_move_to)
+
+demo(pick_place_demo)
+
+target_link_libraries(${PROJECT_NAME}_pick_place_task pick_place_demo_parameters)
+target_link_libraries(${PROJECT_NAME}_pick_place_demo ${PROJECT_NAME}_pick_place_task)
+
+
+# arm server
 add_executable(arm_server src/arm_server.cpp)
 
 # Tell CMake where to find the headers for this executable
@@ -50,7 +95,7 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME})
 
 install(
-  DIRECTORY launch 
+  DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
 
 install(

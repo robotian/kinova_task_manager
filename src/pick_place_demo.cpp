@@ -35,53 +35,44 @@
 */
 
 // ROS
-#include <rclcpp/node.hpp>
+#include <rclcpp/rclcpp.hpp>
 
-// MoveIt
-#include <moveit/planning_scene/planning_scene.hpp>
-#include <moveit/robot_model/robot_model.hpp>
-#include <moveit/planning_scene_interface/planning_scene_interface.hpp>
+// MTC pick/place demo implementation
+#include <kinova_task_manager/pick_place_task.h>
 
-// MTC
-#include <moveit/task_constructor/task.h>
-#include <moveit/task_constructor/stages/compute_ik.h>
-#include <moveit/task_constructor/stages/connect.h>
-#include <moveit/task_constructor/stages/current_state.h>
-#include <moveit/task_constructor/stages/generate_grasp_pose.h>
-#include <moveit/task_constructor/stages/generate_pose.h>
-#include <moveit/task_constructor/stages/generate_place_pose.h>
-#include <moveit/task_constructor/stages/modify_planning_scene.h>
-#include <moveit/task_constructor/stages/move_relative.h>
-#include <moveit/task_constructor/stages/move_to.h>
-#include <moveit/task_constructor/stages/predicate_filter.h>
-#include <moveit/task_constructor/solvers/cartesian_path.h>
-#include <moveit/task_constructor/solvers/pipeline_planner.h>
-#include <moveit/task_constructor/solvers/joint_interpolation.h>
-#include <moveit_task_constructor_msgs/action/execute_task_solution.hpp>
-#include <kinova_task_manager/pick_place_demo_parameters.hpp>
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_task_constructor_demo");
 
-#pragma once
+int main(int argc, char** argv) {
+	rclcpp::init(argc, argv);
+	rclcpp::NodeOptions node_options;
+	node_options.automatically_declare_parameters_from_overrides(true);
+	auto node = rclcpp::Node::make_shared("moveit_task_constructor_demo", node_options);
+	std::thread spinning_thread([node] { rclcpp::spin(node); });
 
-namespace moveit_task_constructor_demo {
-using namespace moveit::task_constructor;
+	const auto param_listener = std::make_shared<pick_place_task_demo::ParamListener>(node);
+	const auto params = param_listener->get_params();
+	moveit_task_constructor_demo::setupDemoScene(params);
 
-// prepare a demo environment from ROS parameters under node
-void setupDemoScene(const pick_place_task_demo::Params& params);
+	// Construct and run pick/place task
+	moveit_task_constructor_demo::PickPlaceTask pick_place_task("pick_place_task");
+	if (!pick_place_task.init(node, params)) {
+		RCLCPP_INFO(LOGGER, "Initialization failed");
+		return 1;
+	}
 
-class PickPlaceTask
-{
-public:
-	PickPlaceTask(const std::string& task_name);
-	~PickPlaceTask() = default;
+	if (pick_place_task.plan(params.max_solutions)) {
+		RCLCPP_INFO(LOGGER, "Planning succeded");
+		if (params.execute) {
+			pick_place_task.execute();
+			RCLCPP_INFO(LOGGER, "Execution complete");
+		} else {
+			RCLCPP_INFO(LOGGER, "Execution disabled");
+		}
+	} else {
+		RCLCPP_INFO(LOGGER, "Planning failed");
+	}
 
-	bool init(const rclcpp::Node::SharedPtr& node, const pick_place_task_demo::Params& params);
-
-	bool plan(const std::size_t max_solutions);
-
-	bool execute();
-
-private:
-	std::string task_name_;
-	moveit::task_constructor::TaskPtr task_;
-};
-}  // namespace moveit_task_constructor_demo
+	// Keep introspection alive
+	spinning_thread.join();
+	return 0;
+}
