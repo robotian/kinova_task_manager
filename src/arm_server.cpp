@@ -14,6 +14,11 @@
 #include <moveit/task_constructor/solvers.h>
 #include <moveit/task_constructor/stages.h>
 
+
+#include <shape_msgs/msg/solid_primitive.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+
+
 // TF2
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
@@ -167,6 +172,71 @@ private:
       RCLCPP_INFO(this->get_logger(), "An collision object is created.");
     }
 
+  void remove_collision_object(const std::string& object_id) {
+    moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+
+    // 1. Get a list of all objects currently in the scene
+    std::vector<std::string> object_ids = planning_scene_interface.getKnownObjectNames();
+
+    // 2. Check if our target ID is in that list
+    auto it = std::find(object_ids.begin(), object_ids.end(), object_id);
+
+    if (it != object_ids.end()) {
+        RCLCPP_INFO(this->get_logger(), "Object '%s' found. Proceeding with removal.", object_id.c_str());
+        
+        // 3. Use the synchronous removal method
+        // We wrap it in a vector because the function expects a list of IDs
+        planning_scene_interface.removeCollisionObjects({object_id});
+        
+        // Optional: If you want to be 100% sure it's gone before moving the arm:
+        // rclcpp::sleep_for(std::chrono::milliseconds(100)); 
+    } else {
+        RCLCPP_WARN(this->get_logger(), "Object '%s' does not exist in the planning scene. Skipping removal.", object_id.c_str());
+    }
+  }
+
+
+// ... inside your class ...
+
+  void add_collision_object(const std::string& object_id) {
+    moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+
+    // 1. Create the collision object message
+    moveit_msgs::msg::CollisionObject collision_object;
+    collision_object.header.frame_id = "arm_0_base_link"; // Use your robot's base frame
+    collision_object.id = object_id;
+
+    // collision_object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+    // collision_object.primitives[0].dimensions = { 0.05, 0.01 };
+
+    // 2. Define the shape (a box)
+    shape_msgs::msg::SolidPrimitive primitive;
+    primitive.type = primitive.CYLINDER;
+    primitive.dimensions[primitive.CYLINDER_HEIGHT] = 0.05;
+    primitive.dimensions[primitive.CYLINDER_RADIUS] = 0.01;
+
+    // 3. Define the pose of the object
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = 0.0;
+    pose.position.y = 0.3;
+    pose.position.z = 0.2;
+    pose.orientation.w = 1.0;
+    collision_object.pose = pose;
+
+    // 4. Add the shape and pose to the object
+    collision_object.primitives.push_back(primitive);
+    collision_object.primitive_poses.push_back(pose);
+    collision_object.operation = collision_object.ADD;
+
+    // 5. Apply the object to the planning scene
+    // std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
+    // collision_objects.push_back(collision_object);
+    
+    RCLCPP_INFO(this->get_logger(), "Adding object '%s' to the planning scene", object_id.c_str());
+    // planning_scene_interface.addCollisionObjects(collision_objects);
+    planning_scene_interface.applyCollisionObject(collision_object);
+  }
+
   void patchSrdf(){
     // ------------------------------------------------------------------------
     // SRDF PATCHING (Inject <end_effector> AND <group> if missing)
@@ -237,9 +307,9 @@ private:
   } 
 
 
-  mtc::Task createFakeHarvestingTask() {
-      const auto& object_id = "object";
-      this->setupPlanningScene();
+  mtc::Task createFakeHarvestingTask(const std::string& object_id) {
+      // const auto& object_id = "object";
+      // this->setupPlanningScene();
 
       mtc::Task task;
       task.stages()->setName("Single Harvesting Motion");
@@ -325,7 +395,7 @@ private:
         "move to pick",
         // mtc::stages::Connect::GroupPlannerVector{ { this->arm_group_name, sampling_planner }});
         mtc::stages::Connect::GroupPlannerVector{ { this->arm_group_name, sampling_planner }, 
-                                                  { this->hand_group_name, sampling_planner } });
+                                                  { this->hand_group_name, interpolation_planner } });
         stage_move_to_pick->setTimeout(15.0);
         stage_move_to_pick->properties().configureInitFrom(mtc::Stage::PARENT);
         task.add(std::move(stage_move_to_pick));
@@ -344,9 +414,7 @@ private:
         auto grasp = std::make_unique<mtc::SerialContainer>("pick object");
         task.properties().exposeTo(grasp->properties(), { "eef", "hand", "group", "ik_frame" });
         grasp->properties().configureInitFrom(mtc::Stage::PARENT,
-                                              { "eef", "hand", "group", "ik_frame" });
-
-      
+                                              { "eef", "hand", "group", "ik_frame" });      
 
         /****************************************************
   ---- *               Generate Grasp Pose                *
@@ -437,7 +505,6 @@ private:
           stage->setDirection(vec);
           grasp->insert(std::move(stage));
         }
-
         task.add(std::move(grasp));
       }
 
@@ -447,14 +514,6 @@ private:
         stage->setGoal("open_default");
         task.add(std::move(stage));
       }
-
-      {
-        auto stage =
-            std::make_unique<mtc::stages::ModifyPlanningScene>("remove the object");
-        stage->removeObject(object_id);
-        task.add(std::move(stage));
-      }
-
       // To DO: move to the loader position and drop it. 
     return task;
   }
@@ -532,13 +591,9 @@ private:
     mtc::Task task;
     task.stages()->setName("Move to Config Task");
     task.loadRobotModel(shared_from_this());
-    // const auto& arm_group_name = "arm_0";
-    // const auto& hand_group_name = "arm_0_gripper";
-    // const auto& hand_frame = "arm_0_end_effector_link";
 
     // Set task properties
     task.setProperty("group", this->arm_group_name);
-    // task.setProperty("eef", this->hand_group_name);
     task.setProperty("ik_frame", this->hand_frame);
 
     // --- Solvers ---
@@ -547,8 +602,6 @@ private:
     // 1.0 is the maximum speed defined in your joint_limits.yaml
     sampling_planner->setMaxVelocityScalingFactor(1.0);     // Set to max speed
     sampling_planner->setMaxAccelerationScalingFactor(1.0); // Set to max acceleration
-
-    
 
     // --- 0. Current State ---
     mtc::Stage* current_state_ptr = nullptr;
@@ -587,32 +640,30 @@ private:
     kinova_task_manager::ManipulatorCommand cmd = kinova_task_manager::stringToCommand(goal->arm_task);
     mtc::Task task;
     // Switch statement for cleaner logic
+    std::string object_id = "object1";
     switch (cmd) {
         case kinova_task_manager::ManipulatorCommand::GO_STOW:
-            // RCLCPP_INFO(LOGGER, "Executing: GO STOW");
             send_feedback("Initializing Task: GO STOW");
             task = createGoToConfigTask("stow");
             break;
 
         case kinova_task_manager::ManipulatorCommand::GO_READY:
             send_feedback("Initializing Task: GO READY");
-            // RCLCPP_INFO(LOGGER, "Executing: GO READY");
             task = createGoToConfigTask("pre_cut_1");
             break;
 
         case kinova_task_manager::ManipulatorCommand::MOVE_EEF:
-            // RCLCPP_INFO(LOGGER, "Executing: MOVE EEF");
             send_feedback("Initializing Task: MOVE EEF");
             task = createMoveEEFTask("default_config");
             break;
 
         case kinova_task_manager::ManipulatorCommand::START_HARVEST:
             send_feedback("Initializing Task: START HARVEST");
-			// set the scene
-            task = createFakeHarvestingTask();
-			// reset the scene
+      			// set the scene            
+            add_collision_object(object_id);
+            task = createFakeHarvestingTask(object_id);            
+			      // reset the scene
             break;
-
         case kinova_task_manager::ManipulatorCommand::UNKNOWN:
         default:
             RCLCPP_ERROR(LOGGER, "Unknown task received: %s", goal->arm_task.c_str());
@@ -652,6 +703,7 @@ private:
         act_result->success = false;
         goal_handle->abort(act_result);
     }
+    remove_collision_object(object_id);
   }
 
 };
