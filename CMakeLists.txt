@@ -33,6 +33,18 @@ install(TARGETS ${PROJECT_NAME}_pick_place_task
 	RUNTIME DESTINATION lib/${PROJECT_NAME})
 include_directories(include)
 
+# move to config
+add_library(${PROJECT_NAME}_move_to_config_task SHARED src/move_to_config_task.cpp)
+target_link_libraries(${PROJECT_NAME}_move_to_config_task ${moveit_task_constructor_core_TARGETS})
+install(TARGETS ${PROJECT_NAME}_move_to_config_task
+	ARCHIVE DESTINATION lib
+	LIBRARY DESTINATION lib
+	RUNTIME DESTINATION lib/${PROJECT_NAME})
+include_directories(include)
+
+
+
+
 # declare a demo consisting of a single cpp file
 function(demo name)
 	add_executable(${PROJECT_NAME}_${name} src/${name}.cpp)
@@ -50,17 +62,35 @@ function(demo name)
 	)
 endfunction()
 
+
 # demo(cartesian)
 # demo(modular)
 # demo(alternative_path_costs)
 # demo(ik_clearance_cost)
 # demo(fallbacks_move_to)
-
+# demo(move_to_config_task)
 demo(pick_place_demo)
+demo(manipulator_action_server) 
 
-target_link_libraries(${PROJECT_NAME}_pick_place_task pick_place_demo_parameters)
+# target_link_libraries(${PROJECT_NAME}_pick_place_task pick_place_demo_parameters)
+target_link_libraries(${PROJECT_NAME}_pick_place_task manipulator_action_server_parameters)
+target_link_libraries(${PROJECT_NAME}_move_to_config_task manipulator_action_server_parameters)
 target_link_libraries(${PROJECT_NAME}_pick_place_demo ${PROJECT_NAME}_pick_place_task)
+# target_link_libraries(${PROJECT_NAME}_manipulator_action_server ${PROJECT_NAME}_pick_place_task )
 
+target_link_libraries(${PROJECT_NAME}_manipulator_action_server
+  ${PROJECT_NAME}_pick_place_task
+  ${PROJECT_NAME}_move_to_config_task
+  manipulator_action_server_parameters
+)
+
+ament_target_dependencies(${PROJECT_NAME}_manipulator_action_server 
+  rclcpp
+  rclcpp_action
+  moveit_ros_planning_interface
+  moveit_task_constructor_core
+  status_interfaces
+)
 
 # arm server
 add_executable(arm_server src/arm_server.cpp)
@@ -82,14 +112,6 @@ ament_target_dependencies(arm_server
   tf2_eigen          # Added
 )
 
-# 3. Define the Client
-# add_executable(arm_client src/arm_client.cpp)
-# ament_target_dependencies(arm_client 
-#   rclcpp 
-#   rclcpp_action 
-#   status_interfaces
-# )
-
 install(TARGETS
   arm_server  
   DESTINATION lib/${PROJECT_NAME})
@@ -102,6 +124,32 @@ install(
   DIRECTORY include/
   DESTINATION include
 )
+
+# manipualtor action server
+# Define the Action Server executable
+# add_executable(manipulator_action_server src/manipulator_action_server.cpp)
+# # Target dependencies (linking libraries)
+# target_link_libraries(manipulator_action_server
+#   PUBLIC
+#   # This links to the logic in pick_place_task.h/cpp if it's in this same package
+#   # If pick_place_task is a separate library, add it here.
+# )
+# ament_target_dependencies(manipulator_action_server 
+#   rclcpp 
+#   rclcpp_action 
+#   moveit_ros_planning_interface 
+#   moveit_task_constructor_core
+#   status_interfaces
+#   tf2_ros
+#   tf2_geometry_msgs  # Added
+#   tf2_eigen          # Added
+# )
+
+# # Install
+# install(TARGETS
+#   manipulator_action_server
+#   DESTINATION lib/${PROJECT_NAME}
+# )
 
 # Export the include directory for other packages
 ament_export_include_directories(include)

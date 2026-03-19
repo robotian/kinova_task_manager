@@ -9,6 +9,7 @@ namespace kinova_task_manager {
 enum class ManipulatorCommand {
     GO_STOW,
     GO_READY,
+    GO_DROP,
     MOVE_EEF,
     START_HARVEST,
     UNKNOWN
@@ -22,6 +23,7 @@ inline ManipulatorCommand stringToCommand(const std::string& task_str) {
     static const std::unordered_map<std::string, ManipulatorCommand> command_map = {
         {"GO STOW",  ManipulatorCommand::GO_STOW},
         {"GO READY", ManipulatorCommand::GO_READY},
+        {"GO DROP", ManipulatorCommand::GO_DROP},
         {"MOVE EEF", ManipulatorCommand::MOVE_EEF},
         {"START HARVEST", ManipulatorCommand::START_HARVEST}
     };

@@ -58,9 +58,8 @@
 #include <moveit/task_constructor/solvers/pipeline_planner.h>
 #include <moveit/task_constructor/solvers/joint_interpolation.h>
 #include <moveit_task_constructor_msgs/action/execute_task_solution.hpp>
-// #include <kinova_task_manager/manipulator_action_server_parameters.hpp>
-// #include <kinova_task_manager/pick_place_demo_parameters.hpp>
 #include <kinova_task_manager/manipulator_action_server_parameters.hpp>
+// #include <kinova_task_manager/pick_place_demo_parameters.hpp>
 
 #pragma once
 
@@ -68,13 +67,13 @@ namespace moveit_task_constructor_demo {
 using namespace moveit::task_constructor;
 
 // prepare a demo environment from ROS parameters under node
-void setupDemoScene(const pick_place_task_demo::Params& params);
+// void setupDemoScene(const pick_place_task_demo::Params& params);
 
-class PickPlaceTask
+class MoveToConfigTask
 {
 public:
-	PickPlaceTask(const std::string& task_name);
-	~PickPlaceTask() = default;
+	MoveToConfigTask(const std::string& task_name);
+	~MoveToConfigTask() = default;
 
 	bool init(const rclcpp::Node::SharedPtr& node, const pick_place_task_demo::Params& params);
 
@@ -82,8 +81,11 @@ public:
 
 	bool execute();
 
+	bool setTargetConfig(const std::string& target_config);
+
 private:
 	std::string task_name_;
+	std::string target_config_;
 	moveit::task_constructor::TaskPtr task_;
 };
 }  // namespace moveit_task_constructor_demo
