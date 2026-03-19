@@ -63,8 +63,13 @@ int main(int argc, char** argv) {
 	if (pick_place_task.plan(params.max_solutions)) {
 		RCLCPP_INFO(LOGGER, "Planning succeded");
 		if (params.execute) {
-			pick_place_task.execute();
-			RCLCPP_INFO(LOGGER, "Execution complete");
+			if(pick_place_task.execute()){
+				RCLCPP_INFO(LOGGER, "Execution succeeded");
+			} else {
+				RCLCPP_INFO(LOGGER, "Execution failed");
+			}
+			
+			// RCLCPP_INFO(LOGGER, "Execution complete");
 		} else {
 			RCLCPP_INFO(LOGGER, "Execution disabled");
 		}
