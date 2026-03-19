@@ -68,8 +68,6 @@ int main(int argc, char** argv) {
 			} else {
 				RCLCPP_INFO(LOGGER, "Execution failed");
 			}
-			
-			// RCLCPP_INFO(LOGGER, "Execution complete");
 		} else {
 			RCLCPP_INFO(LOGGER, "Execution disabled");
 		}
