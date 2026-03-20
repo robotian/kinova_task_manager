@@ -58,34 +58,37 @@
 #include <moveit/task_constructor/solvers/pipeline_planner.h>
 #include <moveit/task_constructor/solvers/joint_interpolation.h>
 #include <moveit_task_constructor_msgs/action/execute_task_solution.hpp>
-// #include <kinova_task_manager/manipulator_action_server_parameters.hpp>
-// #include <kinova_task_manager/pick_place_demo_parameters.hpp>
 #include <kinova_task_manager/manipulator_action_server_parameters.hpp>
+// #include <geometry_msgs/msg/posestamped.hpp>
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 
 #pragma once
 
 namespace moveit_task_constructor_demo {
 using namespace moveit::task_constructor;
 
-// prepare a demo environment from ROS parameters under node
-void setupDemoScene(const manipulator_action_server::Params& params);
-void clearPlanningScene();
-
-class PickPlaceTask
+class MoveEefTask
 {
 public:
-	PickPlaceTask(const std::string& task_name);
-	~PickPlaceTask() = default;
+	MoveEefTask(const std::string& task_name);
+	~MoveEefTask() = default;
 
 	bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params);
-	bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params, bool last_action_flag);
 
 	bool plan(const std::size_t max_solutions);
 
 	bool execute();
 
+	bool setTargetPose(const geometry_msgs::msg::PoseStamped& target_pose);
+
+	geometry_msgs::msg::PoseStamped target_pose_;
+
 private:
 	std::string task_name_;
+	// std::string target_config_;
+	
 	moveit::task_constructor::TaskPtr task_;
 };
 }  // namespace moveit_task_constructor_demo

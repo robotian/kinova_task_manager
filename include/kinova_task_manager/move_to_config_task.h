@@ -75,7 +75,7 @@ public:
 	MoveToConfigTask(const std::string& task_name);
 	~MoveToConfigTask() = default;
 
-	bool init(const rclcpp::Node::SharedPtr& node, const pick_place_task_demo::Params& params);
+	bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params);
 
 	bool plan(const std::size_t max_solutions);
 

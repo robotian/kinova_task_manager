@@ -2,6 +2,7 @@
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <kinova_task_manager/pick_place_task.h>
 #include <kinova_task_manager/move_to_config_task.h>
+#include <kinova_task_manager/move_eef_task.h>
 #include "status_interfaces/action/manipulator_task.hpp"
 #include "kinova_task_manager/manipulator_commands.hpp"
 
@@ -27,17 +28,17 @@ public:
             std::bind(&ManipulatorActionServer::handle_accepted, this, _1));
         
         // Initialize parameters
-        // param_listener_ = std::make_shared<pick_place_task_demo::ParamListener>(this->shared_from_this());
+        // param_listener_ = std::make_shared<manipulator_action_server::ParamListener>(this->shared_from_this());
         RCLCPP_INFO(this->get_logger(), "Manipulator Action Server is ready.");
     }
 
     void init_parameters() {
-        param_listener_ = std::make_shared<pick_place_task_demo::ParamListener>(this->shared_from_this());
+        param_listener_ = std::make_shared<manipulator_action_server::ParamListener>(this->shared_from_this());
     }
 
 private:
     rclcpp_action::Server<Manipulator>::SharedPtr action_server_;
-    std::shared_ptr<pick_place_task_demo::ParamListener> param_listener_;
+    std::shared_ptr<manipulator_action_server::ParamListener> param_listener_;
 
     // 1. Handle incoming goal requests
     rclcpp_action::GoalResponse handle_goal(
@@ -103,38 +104,80 @@ private:
 
     void doTask(const std::shared_ptr<GoalHandleManipulator> goal_handle){
         const auto goal = goal_handle->get_goal();
+        
         auto result = std::make_shared<Manipulator::Result>();
-        // auto feedback = std::make_shared<Manipulator::Feedback>(); // Create feedback object
         
         // Safety check: is ROS still running?
         if (!rclcpp::ok()) return;
 
-        // Helper lambda to send status quickly
-        // auto send_feedback = [&](std::string msg) {
-        //     feedback->status = msg;
-        //     goal_handle->publish_feedback(feedback);
-        //     RCLCPP_INFO(LOGGER, "Feedback: %s", msg.c_str());
-        // };
-
         // Convert string to enum
         kinova_task_manager::ManipulatorCommand cmd = kinova_task_manager::stringToCommand(goal->arm_task);
         RCLCPP_INFO(this->get_logger(), "Initializing Task: %s", goal->arm_task.c_str());
-
         
-        std::string target_config = "empty";
+        
+        std::string target_config = "";
 
         switch (cmd) {
             case kinova_task_manager::ManipulatorCommand::GO_STOW:
                 target_config = "stow";
+                break;
             case kinova_task_manager::ManipulatorCommand::GO_READY:
                 target_config = "pre_cut_1";
+                break;
             case kinova_task_manager::ManipulatorCommand::GO_DROP:
                 target_config = "drop";
-            {
-                auto action_task = std::make_unique<moveit_task_constructor_demo::MoveToConfigTask>("move_to_config_task");
+                break;
+            default:
+                break;
+        }
+        
+        if (!target_config.empty()) {
+            auto action_task = std::make_unique<moveit_task_constructor_demo::MoveToConfigTask>("move_to_config_task");
 
-                if(!action_task->setTargetConfig(target_config)){
-                    RCLCPP_ERROR(this->get_logger(), "The target config does not exist");
+            if(!action_task->setTargetConfig(target_config)){
+                RCLCPP_ERROR(this->get_logger(), "The target config does not exist");
+                result->success = false;
+                goal_handle->abort(result);
+                return;
+            }
+
+            if (!action_task->init(this->shared_from_this(), param_listener_->get_params())) {
+                RCLCPP_ERROR(this->get_logger(), "Task initialization failed");
+                result->success = false;
+                goal_handle->abort(result);
+                return;
+            }
+            if (action_task->plan(5)) {
+                RCLCPP_INFO(this->get_logger(), "Planning succeeded");
+                
+                if (action_task->execute()) {
+                    RCLCPP_INFO(this->get_logger(), "Execution succeeded");
+                    result->success = true;
+                    goal_handle->succeed(result);
+                } else {
+                    RCLCPP_ERROR(this->get_logger(), "Execution failed");
+                    result->success = false;
+                    goal_handle->abort(result);
+                }
+            } else {
+                RCLCPP_ERROR(this->get_logger(), "Planning failed");
+                result->success = false;
+                goal_handle->abort(result);
+            }
+            return;
+        }
+
+
+
+        switch (cmd) {            
+            case kinova_task_manager::ManipulatorCommand::MOVE_EEF:
+            {   
+                moveit_task_constructor_demo::clearPlanningScene();
+                
+                auto action_task = std::make_unique<moveit_task_constructor_demo::MoveEefTask>("move_eef_task");
+
+                if(!action_task->setTargetPose(goal->target_eef_pose)){
+                    RCLCPP_ERROR(this->get_logger(), "The target pose cannot be reached");
                     result->success = false;
                     goal_handle->abort(result);
                     return;
@@ -146,6 +189,7 @@ private:
                     goal_handle->abort(result);
                     return;
                 }
+
                 if (action_task->plan(5)) {
                     RCLCPP_INFO(this->get_logger(), "Planning succeeded");
                     
@@ -163,11 +207,9 @@ private:
                     result->success = false;
                     goal_handle->abort(result);
                 }
+
                 break;
             }
-            case kinova_task_manager::ManipulatorCommand::MOVE_EEF:
-                break;
-
             case kinova_task_manager::ManipulatorCommand::START_HARVEST:
             {
                 const auto params = param_listener_->get_params();

@@ -35,51 +35,26 @@
 */
 
 #include <Eigen/Geometry>
-#include <kinova_task_manager/move_to_config_task.h>
+#include <kinova_task_manager/move_eef_task.h>
 #include <geometry_msgs/msg/pose.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_task_constructor_demo");
 
-// std::vector<std::string> a300_missing_links ={
-// 	"chassis_link", 
-// 	"right_suspension_beam_link",
-// 	"camera_0_camera_center",
-// 	"arch_link",
-// 	"fath_pivot_0_link",
-// 	"estop_link",
-// 	"wireless_charger_link"    
-// };
-
-// namespace {
-// Eigen::Isometry3d vectorToEigen(const std::vector<double>& values) {
-// 	return Eigen::Translation3d(values[0], values[1], values[2]) *
-// 	       Eigen::AngleAxisd(values[3], Eigen::Vector3d::UnitX()) *
-// 	       Eigen::AngleAxisd(values[4], Eigen::Vector3d::UnitY()) *
-// 	       Eigen::AngleAxisd(values[5], Eigen::Vector3d::UnitZ());
-// }
-// geometry_msgs::msg::Pose vectorToPose(const std::vector<double>& values) {
-// 	return tf2::toMsg(vectorToEigen(values));
-// };
-// }  // namespace
-
 namespace moveit_task_constructor_demo {
 
-// void spawnObject(moveit::planning_interface::PlanningSceneInterface& psi,
-//                  const moveit_msgs::msg::CollisionObject& object) {
-// 	if (!psi.applyCollisionObject(object))
-// 		throw std::runtime_error("Failed to spawn object: " + object.id);
-// }
+MoveEefTask::MoveEefTask(const std::string& task_name) : task_name_(task_name) {}
 
-MoveToConfigTask::MoveToConfigTask(const std::string& task_name) : task_name_(task_name) {}
 
-bool MoveToConfigTask::setTargetConfig(const std::string& target_config){
-	// To do: need to check if the target config exists in the SRDF
-	target_config_ = target_config;
-	return true;
+bool MoveEefTask::setTargetPose(const geometry_msgs::msg::PoseStamped& target_pose){
+    RCLCPP_INFO(LOGGER, "Target pose received");
+
+    target_pose_=target_pose;
+    return true;
 }
 
-bool MoveToConfigTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params) {
+
+bool MoveEefTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params) {
 	RCLCPP_INFO(LOGGER, "Initializing task pipeline");
 
 	// Reset ROS introspection before constructing the new object
@@ -103,10 +78,10 @@ bool MoveToConfigTask::init(const rclcpp::Node::SharedPtr& node, const manipulat
 	auto interpolation_planner = std::make_shared<solvers::JointInterpolationPlanner>();
 
 	// Cartesian planner
-	auto cartesian_planner = std::make_shared<solvers::CartesianPath>();
-	cartesian_planner->setMaxVelocityScalingFactor(1.0);
-	cartesian_planner->setMaxAccelerationScalingFactor(1.0);
-	cartesian_planner->setStepSize(.01);
+	// auto cartesian_planner = std::make_shared<solvers::CartesianPath>();
+	// cartesian_planner->setMaxVelocityScalingFactor(1.0);
+	// cartesian_planner->setMaxAccelerationScalingFactor(1.0);
+	// cartesian_planner->setStepSize(.01);
 
 	// Set task properties
 	t.setProperty("group", params.arm_group_name);
@@ -120,18 +95,43 @@ bool MoveToConfigTask::init(const rclcpp::Node::SharedPtr& node, const manipulat
 	 *               Current State                      *
 	 *                                                  *
 	 ***************************************************/
+    Stage* current_state_ptr = nullptr;
 	{
         auto stage = std::make_unique<stages::CurrentState>("current");
+        current_state_ptr = stage.get();
         t.add(std::move(stage));
     }
 
-    // --- 2. Move to Stow ---
     {
-        auto stage = std::make_unique<stages::MoveTo>("move to ready", sampling_planner);
-        stage->setGroup(params.arm_group_name);
-        stage->setGoal(target_config_); // Must match <group_state name="ready"> in SRDF
-        t.add(std::move(stage));
+        auto connect = std::make_unique<stages::Connect>(
+            "move to target",
+            stages::Connect::GroupPlannerVector{{params.arm_group_name, sampling_planner}}
+        );
+        t.add(std::move(connect));
     }
+
+    {
+        auto target_pose_stage = std::make_unique<stages::GeneratePose>("target pose");
+        target_pose_stage->setMonitoredStage(current_state_ptr); 
+
+		RCLCPP_DEBUG(LOGGER, "The target psoe frame id = %s", this->target_pose_.header.frame_id.c_str());
+		
+        target_pose_stage->setPose(this->target_pose_);
+		
+
+        auto wrapper = std::make_unique<stages::ComputeIK>("compute ik", std::move(target_pose_stage));
+        wrapper->setMaxIKSolutions(30);
+        wrapper->setMinSolutionDistance(0.1);
+        wrapper->properties().configureInitFrom(Stage::PARENT, { "eef", "group" }); 
+        wrapper->properties().configureInitFrom(Stage::INTERFACE, { "target_pose" });
+        wrapper->setEndEffector(params.eef_name);
+        wrapper->setGroup(params.arm_group_name);
+        wrapper->setIKFrame(params.hand_frame);
+        
+        t.add(std::move(wrapper));
+
+    }
+    
 	
 	// prepare Task structure for planning
 	try {
@@ -144,13 +144,13 @@ bool MoveToConfigTask::init(const rclcpp::Node::SharedPtr& node, const manipulat
 	return true;
 }
 
-bool MoveToConfigTask::plan(const std::size_t max_solutions) {
+bool MoveEefTask::plan(const std::size_t max_solutions) {
 	RCLCPP_INFO(LOGGER, "Start searching for task solutions");
 
 	return static_cast<bool>(task_->plan(max_solutions));
 }
 
-bool MoveToConfigTask::execute() {
+bool MoveEefTask::execute() {
 	RCLCPP_INFO(LOGGER, "Executing solution trajectory");
 	moveit_msgs::msg::MoveItErrorCodes execute_result;
 

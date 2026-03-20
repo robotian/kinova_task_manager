@@ -1,4 +1,4 @@
-pick_place_task_demo:
+manipulator_action_server:
   execute:
     type: bool
     default_value: false

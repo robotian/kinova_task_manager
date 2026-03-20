@@ -42,6 +42,15 @@ install(TARGETS ${PROJECT_NAME}_move_to_config_task
 	RUNTIME DESTINATION lib/${PROJECT_NAME})
 include_directories(include)
 
+# move eef
+add_library(${PROJECT_NAME}_move_eef_task SHARED src/move_eef_task.cpp)
+target_link_libraries(${PROJECT_NAME}_move_eef_task ${moveit_task_constructor_core_TARGETS})
+install(TARGETS ${PROJECT_NAME}_move_eef_task
+	ARCHIVE DESTINATION lib
+	LIBRARY DESTINATION lib
+	RUNTIME DESTINATION lib/${PROJECT_NAME})
+include_directories(include)
+
 
 
 
@@ -69,18 +78,20 @@ endfunction()
 # demo(ik_clearance_cost)
 # demo(fallbacks_move_to)
 # demo(move_to_config_task)
-demo(pick_place_demo)
+# demo(pick_place_demo)
 demo(manipulator_action_server) 
 
 # target_link_libraries(${PROJECT_NAME}_pick_place_task pick_place_demo_parameters)
 target_link_libraries(${PROJECT_NAME}_pick_place_task manipulator_action_server_parameters)
 target_link_libraries(${PROJECT_NAME}_move_to_config_task manipulator_action_server_parameters)
-target_link_libraries(${PROJECT_NAME}_pick_place_demo ${PROJECT_NAME}_pick_place_task)
+target_link_libraries(${PROJECT_NAME}_move_eef_task manipulator_action_server_parameters)
+# target_link_libraries(${PROJECT_NAME}_pick_place_demo ${PROJECT_NAME}_pick_place_task)
 # target_link_libraries(${PROJECT_NAME}_manipulator_action_server ${PROJECT_NAME}_pick_place_task )
 
 target_link_libraries(${PROJECT_NAME}_manipulator_action_server
   ${PROJECT_NAME}_pick_place_task
   ${PROJECT_NAME}_move_to_config_task
+  ${PROJECT_NAME}_move_eef_task
   manipulator_action_server_parameters
 )
 

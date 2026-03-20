@@ -71,7 +71,7 @@ void spawnObject(moveit::planning_interface::PlanningSceneInterface& psi,
 		throw std::runtime_error("Failed to spawn object: " + object.id);
 }
 
-moveit_msgs::msg::CollisionObject createTable(const pick_place_task_demo::Params& params) {
+moveit_msgs::msg::CollisionObject createTable(const manipulator_action_server::Params& params) {
 	geometry_msgs::msg::Pose pose = vectorToPose(params.table_pose);
 	moveit_msgs::msg::CollisionObject object;
 	object.id = params.table_name;
@@ -85,7 +85,7 @@ moveit_msgs::msg::CollisionObject createTable(const pick_place_task_demo::Params
 	return object;
 }
 
-moveit_msgs::msg::CollisionObject createObject(const pick_place_task_demo::Params& params) {
+moveit_msgs::msg::CollisionObject createObject(const manipulator_action_server::Params& params) {
 	geometry_msgs::msg::Pose pose = vectorToPose(params.object_pose);
 	moveit_msgs::msg::CollisionObject object;
 	object.id = params.object_name;
@@ -98,7 +98,7 @@ moveit_msgs::msg::CollisionObject createObject(const pick_place_task_demo::Param
 	return object;
 }
 
-void setupDemoScene(const pick_place_task_demo::Params& params) {
+void setupDemoScene(const manipulator_action_server::Params& params) {
 	// Add table and object to planning scene
 	RCLCPP_INFO(LOGGER, "Setting the planning scene");
 	rclcpp::sleep_for(std::chrono::microseconds(100));  // Wait for ApplyPlanningScene service
@@ -112,9 +112,19 @@ void setupDemoScene(const pick_place_task_demo::Params& params) {
 	spawnObject(psi, createObject(params));
 }
 
+void clearPlanningScene(){
+	// Add table and object to planning scene
+	RCLCPP_INFO(LOGGER, "Clearing the planning scene");
+	rclcpp::sleep_for(std::chrono::microseconds(100));  // Wait for ApplyPlanningScene service
+	moveit::planning_interface::PlanningSceneInterface psi;
+
+	std::vector<std::string> object_ids = psi.getKnownObjectNames();
+	psi.removeCollisionObjects({object_ids});
+}
+
 PickPlaceTask::PickPlaceTask(const std::string& task_name) : task_name_(task_name) {}
 
-bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_task_demo::Params& params, bool last_action_flag){
+bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params, bool last_action_flag){
 	RCLCPP_INFO(LOGGER, "Initializing task pipeline");
 
 	// Reset ROS introspection before constructing the new object
@@ -273,7 +283,21 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 			    true);
 			// misc. links
 			for(const auto& link: a300_missing_links){
-				stage->allowCollisions(link,t.getRobotModel()->getLinkModelNamesWithCollisionGeometry(), true);
+				auto all_links = t.getRobotModel()->getLinkModelNamesWithCollisionGeometry();
+				std::vector<std::string> filtered_links;
+				for (const auto& link_name : all_links) {
+					if (link_name.rfind("arm_0", 0) != 0) { // Check if it DOES NOT start with "arm_0"
+						filtered_links.push_back(link_name);
+					}
+				}
+				// std::copy_if(all_links.begin(), all_links.end(), std::back_inserter(filtered_links),
+				// 	[](const std::string& name) {
+				// 		return name.rfind("arm_0", 0) == 0; // Checks if 'arm_0' is at index 0
+				// 	});
+
+				stage->allowCollisions(link, filtered_links, true);
+
+				// stage->allowCollisions(link,t.getRobotModel()->getLinkModelNamesWithCollisionGeometry(), true);
 			}
 			grasp->insert(std::move(stage));
 		}
@@ -486,7 +510,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_t
 
 
 
-bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const pick_place_task_demo::Params& params) {
+bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params) {
 	RCLCPP_INFO(LOGGER, "Initializing task pipeline");
 
 	// Reset ROS introspection before constructing the new object
