@@ -171,42 +171,53 @@ private:
             case kinova_task_manager::ManipulatorCommand::START_HARVEST:
             {
                 const auto params = param_listener_->get_params();
-                // Setup Scene
-                moveit_task_constructor_demo::setupDemoScene(params);
 
-                // Construct Task
-                moveit_task_constructor_demo::PickPlaceTask pick_place_task("pick_place_task");
-                
-                if (!pick_place_task.init(this->shared_from_this(), params)) {
-                    RCLCPP_ERROR(this->get_logger(), "Task initialization failed");
-                    result->success = false;
-                    goal_handle->abort(result);
-                    return;
-                }
+                int num_of_actions = 3;
+                bool isLastAction = false;
 
-                if (pick_place_task.plan(params.max_solutions)) {
-                    RCLCPP_INFO(this->get_logger(), "Planning succeeded");
-
-                    // pick_place_task.execute();
-                    // RCLCPP_INFO(this->get_logger(), "1st Run");
-
-                    // pick_place_task.execute();
-                    // RCLCPP_INFO(this->get_logger(), "2nd Run");
+                for(int i=0; i<num_of_actions; i++){
+                    // Setup Scene
+                    moveit_task_constructor_demo::setupDemoScene(params);
+    
+                    // Construct Task
+                    moveit_task_constructor_demo::PickPlaceTask pick_place_task("pick_place_task");
+                    if(i==num_of_actions-1){
+                        isLastAction = true;
+                    }else
+                        isLastAction = false;
                     
-                    if (pick_place_task.execute()) {
-                        RCLCPP_INFO(this->get_logger(), "Execution succeeded");
-                        result->success = true;
-                        goal_handle->succeed(result);
-                    } else {
-                        RCLCPP_ERROR(this->get_logger(), "Execution failed");
+                    if (!pick_place_task.init(this->shared_from_this(), params, isLastAction)) {
+                        RCLCPP_ERROR(this->get_logger(), "Task initialization failed");
                         result->success = false;
                         goal_handle->abort(result);
+                        return;
                     }
-                } else {
-                    RCLCPP_ERROR(this->get_logger(), "Planning failed");
-                    result->success = false;
-                    goal_handle->abort(result);
+    
+                    if (pick_place_task.plan(params.max_solutions)) {
+                        RCLCPP_INFO(this->get_logger(), "Planning succeeded");
+    
+                        if (pick_place_task.execute()) {
+                            RCLCPP_INFO(this->get_logger(), "Execution succeeded");
+                            // result->success = true;
+                            // goal_handle->succeed(result);
+                        } else {
+                            RCLCPP_ERROR(this->get_logger(), "Execution failed");
+                            result->success = false;
+                            goal_handle->abort(result);
+                            return;
+                        }
+                    } else {
+                        RCLCPP_ERROR(this->get_logger(), "Planning failed");
+                        result->success = false;
+                        goal_handle->abort(result);
+                        return;
+                    }
+                    RCLCPP_INFO(this->get_logger(), "Harvesting actions number %d succeeded",i+1);
                 }
+
+                RCLCPP_INFO(this->get_logger(), "All Harvesting actions succeeded");
+                result->success = true;
+                goal_handle->succeed(result);
                 break;
             }   
 

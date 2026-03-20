@@ -77,6 +77,7 @@ public:
 	~PickPlaceTask() = default;
 
 	bool init(const rclcpp::Node::SharedPtr& node, const pick_place_task_demo::Params& params);
+	bool init(const rclcpp::Node::SharedPtr& node, const pick_place_task_demo::Params& params, bool last_action_flag);
 
 	bool plan(const std::size_t max_solutions);
 
