@@ -2,7 +2,7 @@
   ros__parameters:
     execute: true
     # Total planning attempts
-    max_solutions: 10
+    max_solutions: 20
 
     # Planning group and link names
     arm_group_name: "arm_0"

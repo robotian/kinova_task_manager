@@ -18,6 +18,8 @@ public:
         : Node("manipulator_action_server", options) {
         
         RCLCPP_INFO(this->get_logger(), "Starting Manipulator Action Server...");
+
+        this->manipulator_status_ = Manipulator::Feedback::PLANNING;
         
 
         this->action_server_ = rclcpp_action::create_server<Manipulator>(
@@ -39,6 +41,22 @@ public:
 private:
     rclcpp_action::Server<Manipulator>::SharedPtr action_server_;
     std::shared_ptr<manipulator_action_server::ParamListener> param_listener_;
+    int8_t manipulator_status_;
+
+    // Helper to send status feedback
+    void send_feedback(const std::shared_ptr<GoalHandleManipulator> goal_handle, int8_t status) {
+        auto feedback = std::make_shared<Manipulator::Feedback>();
+        feedback->status = status; // Assuming your .action file has a 'string status' field
+        goal_handle->publish_feedback(feedback);
+        RCLCPP_DEBUG(this->get_logger(), "Feedback sent: %d", status);
+    }
+
+    void send_feedback(const std::shared_ptr<GoalHandleManipulator> goal_handle) {
+        auto feedback = std::make_shared<Manipulator::Feedback>();
+        feedback->status = manipulator_status_; // Assuming your .action file has a 'string status' field
+        goal_handle->publish_feedback(feedback);
+        RCLCPP_DEBUG(this->get_logger(), "Feedback sent: %d", manipulator_status_);
+    }
 
     // 1. Handle incoming goal requests
     rclcpp_action::GoalResponse handle_goal(
@@ -59,6 +77,8 @@ private:
 
     // 3. Handle execution
     void handle_accepted(const std::shared_ptr<GoalHandleManipulator> goal_handle) {
+        this->manipulator_status_ = Manipulator::Feedback::IDLE;
+        send_feedback(goal_handle);
         // Execute in a separate thread to avoid blocking the executor
         std::thread{std::bind(&ManipulatorActionServer::doTask, this, _1), goal_handle}.detach();
     }
@@ -110,6 +130,9 @@ private:
         // Safety check: is ROS still running?
         if (!rclcpp::ok()) return;
 
+        // manipulator_status_ = Manipulator::Feedback::PLANNING;
+        
+
         // Convert string to enum
         kinova_task_manager::ManipulatorCommand cmd = kinova_task_manager::stringToCommand(goal->arm_task);
         RCLCPP_INFO(this->get_logger(), "Initializing Task: %s", goal->arm_task.c_str());
@@ -132,10 +155,17 @@ private:
         }
         
         if (!target_config.empty()) {
+            manipulator_status_ = Manipulator::Feedback::PLANNING;
+            send_feedback(goal_handle);
+
             auto action_task = std::make_unique<moveit_task_constructor_demo::MoveToConfigTask>("move_to_config_task");
 
             if(!action_task->setTargetConfig(target_config)){
                 RCLCPP_ERROR(this->get_logger(), "The target config does not exist");
+
+                manipulator_status_ = Manipulator::Feedback::FAILED;
+                send_feedback(goal_handle);
+
                 result->success = false;
                 goal_handle->abort(result);
                 return;
@@ -143,24 +173,47 @@ private:
 
             if (!action_task->init(this->shared_from_this(), param_listener_->get_params())) {
                 RCLCPP_ERROR(this->get_logger(), "Task initialization failed");
+
+                manipulator_status_ = Manipulator::Feedback::FAILED;
+                send_feedback(goal_handle);
+
                 result->success = false;
                 goal_handle->abort(result);
                 return;
             }
+
             if (action_task->plan(5)) {
                 RCLCPP_INFO(this->get_logger(), "Planning succeeded");
+
+                manipulator_status_ = Manipulator::Feedback::MOVING;
+                send_feedback(goal_handle);
                 
                 if (action_task->execute()) {
                     RCLCPP_INFO(this->get_logger(), "Execution succeeded");
+                    
+                    manipulator_status_ = Manipulator::Feedback::MOVING_COMPLETE;
+                    send_feedback(goal_handle);
+
+                    manipulator_status_ = Manipulator::Feedback::IDLE;
+                    send_feedback(goal_handle);
+
                     result->success = true;
                     goal_handle->succeed(result);
-                } else {
+                } else {                    
                     RCLCPP_ERROR(this->get_logger(), "Execution failed");
+
+                    manipulator_status_ = Manipulator::Feedback::FAILED;
+                    send_feedback(goal_handle);
+
                     result->success = false;
                     goal_handle->abort(result);
                 }
             } else {
                 RCLCPP_ERROR(this->get_logger(), "Planning failed");
+
+                manipulator_status_ = Manipulator::Feedback::FAILED;
+                send_feedback(goal_handle);
+
                 result->success = false;
                 goal_handle->abort(result);
             }
@@ -178,6 +231,8 @@ private:
 
                 if(!action_task->setTargetPose(goal->target_eef_pose)){
                     RCLCPP_ERROR(this->get_logger(), "The target pose cannot be reached");
+                    manipulator_status_ = Manipulator::Feedback::FAILED;
+                    send_feedback(goal_handle);
                     result->success = false;
                     goal_handle->abort(result);
                     return;
@@ -185,6 +240,8 @@ private:
 
                 if (!action_task->init(this->shared_from_this(), param_listener_->get_params())) {
                     RCLCPP_ERROR(this->get_logger(), "Task initialization failed");
+                    manipulator_status_ = Manipulator::Feedback::FAILED;
+                    send_feedback(goal_handle);
                     result->success = false;
                     goal_handle->abort(result);
                     return;
@@ -192,24 +249,36 @@ private:
 
                 if (action_task->plan(5)) {
                     RCLCPP_INFO(this->get_logger(), "Planning succeeded");
+
+                    manipulator_status_ = Manipulator::Feedback::MOVING;
+                    send_feedback(goal_handle);
                     
                     if (action_task->execute()) {
                         RCLCPP_INFO(this->get_logger(), "Execution succeeded");
+
+                        manipulator_status_ = Manipulator::Feedback::MOVING_COMPLETE;
+                        send_feedback(goal_handle);
+
                         result->success = true;
                         goal_handle->succeed(result);
                     } else {
                         RCLCPP_ERROR(this->get_logger(), "Execution failed");
+                        manipulator_status_ = Manipulator::Feedback::FAILED;
+                        send_feedback(goal_handle);
                         result->success = false;
                         goal_handle->abort(result);
                     }
                 } else {
                     RCLCPP_ERROR(this->get_logger(), "Planning failed");
+                    manipulator_status_ = Manipulator::Feedback::FAILED;
+                    send_feedback(goal_handle);
                     result->success = false;
                     goal_handle->abort(result);
                 }
 
                 break;
             }
+            // Harvesting operation
             case kinova_task_manager::ManipulatorCommand::START_HARVEST:
             {
                 const auto params = param_listener_->get_params();
@@ -218,6 +287,8 @@ private:
                 bool isLastAction = false;
 
                 for(int i=0; i<num_of_actions; i++){
+                    manipulator_status_ = Manipulator::Feedback::PLANNING;
+                    send_feedback(goal_handle);
                     // Setup Scene
                     moveit_task_constructor_demo::setupDemoScene(params);
     
@@ -230,6 +301,9 @@ private:
                     
                     if (!pick_place_task.init(this->shared_from_this(), params, isLastAction)) {
                         RCLCPP_ERROR(this->get_logger(), "Task initialization failed");
+                        manipulator_status_ = Manipulator::Feedback::FAILED;
+                        send_feedback(goal_handle);
+
                         result->success = false;
                         goal_handle->abort(result);
                         return;
@@ -237,19 +311,27 @@ private:
     
                     if (pick_place_task.plan(params.max_solutions)) {
                         RCLCPP_INFO(this->get_logger(), "Planning succeeded");
+
+                        manipulator_status_ = Manipulator::Feedback::MOVING;
+                        send_feedback(goal_handle);
     
                         if (pick_place_task.execute()) {
                             RCLCPP_INFO(this->get_logger(), "Execution succeeded");
-                            // result->success = true;
-                            // goal_handle->succeed(result);
+                            manipulator_status_ = Manipulator::Feedback::MOVING_COMPLETE;
+                            send_feedback(goal_handle);
                         } else {
                             RCLCPP_ERROR(this->get_logger(), "Execution failed");
+                            manipulator_status_ = Manipulator::Feedback::FAILED;
+                            send_feedback(goal_handle);
+
                             result->success = false;
                             goal_handle->abort(result);
                             return;
                         }
                     } else {
                         RCLCPP_ERROR(this->get_logger(), "Planning failed");
+                        manipulator_status_ = Manipulator::Feedback::FAILED;
+                        send_feedback(goal_handle);
                         result->success = false;
                         goal_handle->abort(result);
                         return;
@@ -258,6 +340,8 @@ private:
                 }
 
                 RCLCPP_INFO(this->get_logger(), "All Harvesting actions succeeded");
+                manipulator_status_ = Manipulator::Feedback::IDLE;
+                send_feedback(goal_handle);
                 result->success = true;
                 goal_handle->succeed(result);
                 break;
@@ -266,6 +350,8 @@ private:
             case kinova_task_manager::ManipulatorCommand::UNKNOWN:
             default:
                 RCLCPP_ERROR(this->get_logger(), "Unknown task received: %s", goal->arm_task.c_str());
+                manipulator_status_ = Manipulator::Feedback::FAILED;
+                send_feedback(goal_handle);
                 result->success = false;
                 goal_handle->abort(result);
                 return;

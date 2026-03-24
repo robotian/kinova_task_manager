@@ -103,29 +103,60 @@ ament_target_dependencies(${PROJECT_NAME}_manipulator_action_server
   status_interfaces
 )
 
-# arm server
-add_executable(arm_server src/arm_server.cpp)
 
-# Tell CMake where to find the headers for this executable
-target_include_directories(arm_server PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
 
-ament_target_dependencies(arm_server 
-  rclcpp 
-  rclcpp_action 
-  moveit_ros_planning_interface 
-  moveit_task_constructor_core
+# test client
+add_executable(manipulator_test_client src/manipulator_test_client.cpp)
+ament_target_dependencies(manipulator_test_client
+  rclcpp
+  rclcpp_action
   status_interfaces
-  tf2_ros
-  tf2_geometry_msgs  # Added
-  tf2_eigen          # Added
 )
 
+
+# 4. Install rule
 install(TARGETS
-  arm_server  
+  manipulator_test_client
   DESTINATION lib/${PROJECT_NAME})
+
+# target_include_directories(manipulator_test_client PUBLIC
+#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include>
+# )
+
+# install(TARGETS
+#   arm_server  
+#   DESTINATION lib/${PROJECT_NAME})
+
+# ament_target_dependencies(arm_server 
+#   rclcpp 
+#   rclcpp_action 
+#   status_interfaces
+# )
+
+# arm server
+# add_executable(arm_server src/arm_server.cpp)
+
+# # Tell CMake where to find the headers for this executable
+# target_include_directories(arm_server PUBLIC
+#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include>
+# )
+
+# ament_target_dependencies(arm_server 
+#   rclcpp 
+#   rclcpp_action 
+#   moveit_ros_planning_interface 
+#   moveit_task_constructor_core
+#   status_interfaces
+#   tf2_ros
+#   tf2_geometry_msgs  # Added
+#   tf2_eigen          # Added
+# )
+
+# install(TARGETS
+#   arm_server  
+#   DESTINATION lib/${PROJECT_NAME})
 
 install(
   DIRECTORY launch config
