@@ -308,7 +308,9 @@ private:
                         goal_handle->abort(result);
                         return;
                     }
-    
+
+
+                    // TO DO: Retry when the planning fails. 
                     if (pick_place_task.plan(params.max_solutions)) {
                         RCLCPP_INFO(this->get_logger(), "Planning succeeded");
 

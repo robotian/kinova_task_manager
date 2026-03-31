@@ -41,35 +41,7 @@
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_task_constructor_demo");
 
-// std::vector<std::string> a300_missing_links ={
-// 	"chassis_link", 
-// 	"right_suspension_beam_link",
-// 	"camera_0_camera_center",
-// 	"arch_link",
-// 	"fath_pivot_0_link",
-// 	"estop_link",
-// 	"wireless_charger_link"    
-// };
-
-// namespace {
-// Eigen::Isometry3d vectorToEigen(const std::vector<double>& values) {
-// 	return Eigen::Translation3d(values[0], values[1], values[2]) *
-// 	       Eigen::AngleAxisd(values[3], Eigen::Vector3d::UnitX()) *
-// 	       Eigen::AngleAxisd(values[4], Eigen::Vector3d::UnitY()) *
-// 	       Eigen::AngleAxisd(values[5], Eigen::Vector3d::UnitZ());
-// }
-// geometry_msgs::msg::Pose vectorToPose(const std::vector<double>& values) {
-// 	return tf2::toMsg(vectorToEigen(values));
-// };
-// }  // namespace
-
 namespace moveit_task_constructor_demo {
-
-// void spawnObject(moveit::planning_interface::PlanningSceneInterface& psi,
-//                  const moveit_msgs::msg::CollisionObject& object) {
-// 	if (!psi.applyCollisionObject(object))
-// 		throw std::runtime_error("Failed to spawn object: " + object.id);
-// }
 
 MoveToConfigTask::MoveToConfigTask(const std::string& task_name) : task_name_(task_name) {}
 
