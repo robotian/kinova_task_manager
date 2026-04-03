@@ -459,12 +459,17 @@ private:
           stage->properties().set("marker_ns", "approach_object");
           stage->properties().set("link", this->hand_frame);
           stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-          stage->setMinMaxDistance(0.0, 0.2);
+          // stage->setMinMaxDistance(0.0, 0.2);
+          
+          // For below error changing min_fraction to 0.01
+          // [manipulator_action_server-1] Failing stage(s):
+          // [manipulator_action_server-1] approach object (0/2): CartesianPath: min_fraction not met. Achieved: 0.032258
+          stage->setMinMaxDistance(0.01, 0.2);
     
           // Set hand forward direction
           geometry_msgs::msg::Vector3Stamped vec;
           vec.header.frame_id = this->hand_frame;
-          vec.vector.z = 1.0;
+          vec.vector.z = 1.0; 
           stage->setDirection(vec);
           grasp->insert(std::move(stage));
         }
