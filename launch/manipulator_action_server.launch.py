@@ -54,7 +54,8 @@ def launch_setup(context, *args, **kwargs):
     with open(moveit_config_file, 'r') as file:
         moveit_yaml_content = yaml.safe_load(file)
 
-    moveit_params = moveit_yaml_content['a300_00036']['move_group']['ros__parameters']
+    moveit_params = moveit_yaml_content[namespace]['move_group']['ros__parameters']
+    # moveit_params = moveit_yaml_content['a300_00036']['move_group']['ros__parameters']
 
     package = "kinova_task_manager"
     package_shared_path = get_package_share_directory(package)
