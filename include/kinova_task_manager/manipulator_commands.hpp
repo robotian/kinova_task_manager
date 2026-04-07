@@ -10,6 +10,7 @@ enum class ManipulatorCommand {
     GO_STOW,
     GO_READY,
     GO_DROP,
+    GO_DETECT,
     MOVE_EEF,
     START_HARVEST,
     UNKNOWN
@@ -24,6 +25,7 @@ inline ManipulatorCommand stringToCommand(const std::string& task_str) {
         {"GO STOW",  ManipulatorCommand::GO_STOW},
         {"GO READY", ManipulatorCommand::GO_READY},
         {"GO DROP", ManipulatorCommand::GO_DROP},
+        {"GO DETECT", ManipulatorCommand::GO_DETECT},
         {"MOVE EEF", ManipulatorCommand::MOVE_EEF},
         {"START HARVEST", ManipulatorCommand::START_HARVEST}
     };

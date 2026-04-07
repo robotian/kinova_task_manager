@@ -150,6 +150,9 @@ private:
             case kinova_task_manager::ManipulatorCommand::GO_DROP:
                 target_config = "drop";
                 break;
+            case kinova_task_manager::ManipulatorCommand::GO_DETECT:
+                target_config = "detect_plant";
+                break;
             default:
                 break;
         }
