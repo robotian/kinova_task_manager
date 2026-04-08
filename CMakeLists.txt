@@ -23,6 +23,7 @@ find_package(moveit_ros_planning REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_task_constructor_msgs REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
+find_package(moveit_msgs REQUIRED)
 
 # pick and place
 add_library(${PROJECT_NAME}_pick_place_task SHARED src/pick_place_task.cpp)
@@ -32,6 +33,9 @@ install(TARGETS ${PROJECT_NAME}_pick_place_task
 	LIBRARY DESTINATION lib
 	RUNTIME DESTINATION lib/${PROJECT_NAME})
 include_directories(include)
+ament_target_dependencies(${PROJECT_NAME}_pick_place_task 
+  moveit_msgs
+)
 
 # move to config
 add_library(${PROJECT_NAME}_move_to_config_task SHARED src/move_to_config_task.cpp)

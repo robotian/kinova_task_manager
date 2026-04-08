@@ -41,7 +41,7 @@
 #include <moveit/planning_scene/planning_scene.hpp>
 #include <moveit/robot_model/robot_model.hpp>
 #include <moveit/planning_scene_interface/planning_scene_interface.hpp>
-
+#include <moveit_msgs/msg/workspace_parameters.hpp>
 // MTC
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/stages/compute_ik.h>

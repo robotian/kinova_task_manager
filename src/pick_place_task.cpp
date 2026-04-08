@@ -137,6 +137,19 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_
 	t.stages()->setName(task_name_);
 	t.loadRobotModel(node);
 
+	// 1. Create and fill the WorkspaceParameters message
+	moveit_msgs::msg::WorkspaceParameters workspace;
+	workspace.header.frame_id = "base_link"; // The reference frame for the bounds
+
+	// Define the bounding box [min, max]
+	workspace.min_corner.x = -0.6;
+	workspace.min_corner.y = -0.6;
+	workspace.min_corner.z = -0.1;
+
+	workspace.max_corner.x =  0.6;
+	workspace.max_corner.y =  0.4;
+	workspace.max_corner.z =  0.6;
+
 	/* Create planners used in various stages. Various options are available,
 	   namely Cartesian, MoveIt pipeline, and joint interpolation. */
 	// Sampling planner
@@ -212,6 +225,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_
 		auto stage = std::make_unique<stages::Connect>("move to pick", planners);
 		stage->setTimeout(5.0);
 		stage->properties().configureInitFrom(Stage::PARENT);
+		stage->setProperty("workspace_parameters", workspace);
 		t.add(std::move(stage));
 	}
 
@@ -371,6 +385,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_
 		// stage->properties().configureInitFrom(Stage::PARENT, { "group" });
 		stage->setGoal("drop");
 		stage->setGroup(params.arm_group_name);
+		stage->setProperty("workspace_parameters", workspace);
 		// stage->restrictDirection(stages::MoveTo::FORWARD);
 		t.add(std::move(stage));
 	}
@@ -414,6 +429,7 @@ bool PickPlaceTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_
 		stage->properties().configureInitFrom(Stage::PARENT, { "group" });
 		stage->setGoal(params.arm_home_pose);
 		stage->restrictDirection(stages::MoveTo::FORWARD);
+		stage->setProperty("workspace_parameters", workspace);
 		t.add(std::move(stage));
 	}
 
