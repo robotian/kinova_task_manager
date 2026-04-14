@@ -463,8 +463,9 @@ private:
           
           // For below error changing min_fraction to 0.01
           // [manipulator_action_server-1] Failing stage(s):
-          // [manipulator_action_server-1] approach object (0/2): CartesianPath: min_fraction not met. Achieved: 0.032258
-          stage->setMinMaxDistance(0.01, 0.2);
+          // [manipulator_action_server-1] approach object (0/3): CartesianPath: min_fraction not met. Achieved: 0.032258
+          // [manipulator_action_server-1] min_distance not reached (0.00484 < 0.01)
+          stage->setMinMaxDistance(0.001, 0.2);
     
           // Set hand forward direction
           geometry_msgs::msg::Vector3Stamped vec;
