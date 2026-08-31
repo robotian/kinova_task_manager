@@ -1,13 +1,15 @@
 import os
-import yaml
-import xacro
 
+import xacro
+import yaml
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
+
 from clearpath_config.clearpath_config import ClearpathConfig
+
 # from moveit_configs_utils import MoveItConfigsBuilder
 
 
@@ -69,6 +71,8 @@ def launch_setup(context, *args, **kwargs):
         namespace=namespace,
         output="screen",
         parameters=[
+            robot_description,
+            robot_description_semantic,
             moveit_params,
             move_group_capabilities,
             {"use_sim_time": False},
@@ -110,7 +114,13 @@ def launch_setup(context, *args, **kwargs):
 
 
 
-    return [mtc_task_node]
+    # Give move_group time to come up before the MTC node connects to move_action
+    delayed_mtc_task_node = TimerAction(
+        period=5.0,
+        actions=[mtc_task_node],
+    )
+
+    return [run_move_group_node, delayed_mtc_task_node]
 
 
 def generate_launch_description():
