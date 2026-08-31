@@ -34,6 +34,8 @@
   Desc:   A demo to show MoveIt Task Constructor in action
 */
 
+#include <algorithm>
+
 #include <Eigen/Geometry>
 #include <kinova_task_manager/move_to_config_task.h>
 #include <geometry_msgs/msg/pose.hpp>
@@ -46,9 +48,9 @@ namespace moveit_task_constructor_demo {
 MoveToConfigTask::MoveToConfigTask(const std::string& task_name) : task_name_(task_name) {}
 
 bool MoveToConfigTask::setTargetConfig(const std::string& target_config){
-	// To do: need to check if the target config exists in the SRDF
+	// The robot model is not available yet, so the name is only validated in init()
 	target_config_ = target_config;
-	return true;
+	return !target_config_.empty();
 }
 
 bool MoveToConfigTask::init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params) {
@@ -63,6 +65,25 @@ bool MoveToConfigTask::init(const rclcpp::Node::SharedPtr& node, const manipulat
 	Task& t = *task_;
 	t.stages()->setName(task_name_);
 	t.loadRobotModel(node);
+
+	// Validate the target config against the SRDF before building any stage.
+	// MoveTo only resolves named poses at compute time and throws from there,
+	// which escapes plan() and aborts the process.
+	const auto* jmg = t.getRobotModel()->getJointModelGroup(params.arm_group_name);
+	if (!jmg) {
+		RCLCPP_ERROR_STREAM(LOGGER, "Unknown planning group '" << params.arm_group_name << "'");
+		return false;
+	}
+	const std::vector<std::string>& known_states = jmg->getDefaultStateNames();
+	if (std::find(known_states.begin(), known_states.end(), target_config_) == known_states.end()) {
+		std::string available;
+		for (const auto& name : known_states)
+			available += (available.empty() ? "" : ", ") + name;
+		RCLCPP_ERROR_STREAM(LOGGER, "Unknown target config '" << target_config_ << "' for group '"
+		                                                     << params.arm_group_name << "'. Available: "
+		                                                     << available);
+		return false;
+	}
 
 	/* Create planners used in various stages. Various options are available,
 	   namely Cartesian, MoveIt pipeline, and joint interpolation. */
@@ -119,7 +140,14 @@ bool MoveToConfigTask::init(const rclcpp::Node::SharedPtr& node, const manipulat
 bool MoveToConfigTask::plan(const std::size_t max_solutions) {
 	RCLCPP_INFO(LOGGER, "Start searching for task solutions");
 
-	return static_cast<bool>(task_->plan(max_solutions));
+	// Task::plan() re-runs init() and stages resolve named goals during compute,
+	// so InitStageException can still surface here. Report it instead of terminating.
+	try {
+		return static_cast<bool>(task_->plan(max_solutions));
+	} catch (InitStageException& e) {
+		RCLCPP_ERROR_STREAM(LOGGER, "Planning failed: " << e);
+		return false;
+	}
 }
 
 bool MoveToConfigTask::execute() {
