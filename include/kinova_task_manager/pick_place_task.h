@@ -68,23 +68,57 @@ namespace moveit_task_constructor_demo {
 using namespace moveit::task_constructor;
 
 // prepare a demo environment from ROS parameters under node
+static constexpr double kDefaultGraspAngleDelta = M_PI / 2.0;
+static constexpr double kSingleYawAngleDelta = 2.0 * M_PI;
 void setupDemoScene(const manipulator_action_server::Params& params);
 void clearPlanningScene();
+// Spawn the table (if enabled) plus one cylinder collision object per
+// (pose, id) pair — used to populate the whole harvest grid at once so all
+// not-yet-picked plants stay present as obstacles while each one is picked.
+void setupHarvestGridScene(const manipulator_action_server::Params& params,
+                           const std::vector<geometry_msgs::msg::Pose>& object_poses,
+                           const std::vector<std::string>& object_ids,
+                           const std::vector<double>& object_radii);
+void setupSingleTargetScene(const manipulator_action_server::Params& params,
+                            const geometry_msgs::msg::Pose& object_pose,
+                            const std::string& object_id,
+                            double radius);
+
+
+// Remove a single harvested cylinder's collision object from the live
+// planning scene. Call once a target has been successfully picked and
+// dropped — otherwise it stays parked at the drop pose and piles up with
+// every other harvested object from the same detection.
+void removeHarvestedObject(const std::string& object_id);
+// True when 'object_id' is attached to a robot link in the live planning scene.
+bool isObjectAttached(const std::string& object_id);
+
+// Detach 'object_id' if attached, then remove it from the world. Never throws.
+void detachAndRemoveObject(const std::string& object_id);
+
+// Open the gripper at the current pose (failure recovery).
+bool openGripper(const rclcpp::Node::SharedPtr& node,
+                 const manipulator_action_server::Params& params);
+
+
 
 class PickPlaceTask
 {
 public:
 	PickPlaceTask(const std::string& task_name);
 	~PickPlaceTask() = default;
-
-	bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params);
-	bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params, bool last_action_flag);
+	// bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params);
+	// bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params, bool last_action_flag);
+	bool init(const rclcpp::Node::SharedPtr& node, const manipulator_action_server::Params& params,
+	          bool last_action_flag, const std::vector<std::string>& neighbor_ids = {},
+	          double grasp_angle_delta = kDefaultGraspAngleDelta);
 
 	bool plan(const std::size_t max_solutions);
 
 	bool execute();
 
-private:
+	void preempt() { if (task_) task_->preempt(); }
+
 	std::string task_name_;
 	moveit::task_constructor::TaskPtr task_;
 };

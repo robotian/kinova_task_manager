@@ -82,6 +82,8 @@ public:
 	bool execute();
 
 	bool setTargetPose(const geometry_msgs::msg::PoseStamped& target_pose);
+	
+	void preempt() { if (task_) task_->preempt(); }
 
 	geometry_msgs::msg::PoseStamped target_pose_;
 

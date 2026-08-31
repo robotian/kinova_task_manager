@@ -32,25 +32,31 @@ def launch_setup(context, *args, **kwargs):
         'robot_description': xacro.process_file(urdf_path).toxml()
     }
 
-    srdf_path = os.path.join(setup_path_str, 'robot.srdf')
-    if not os.path.exists(srdf_path):
-        srdf_path = os.path.join(setup_path_str, 'robot.srdf.xacro')
+    # srdf_path = os.path.join(setup_path_str, 'robot.srdf')
+    # if not os.path.exists(srdf_path):
+    #     srdf_path = os.path.join(setup_path_str, 'robot.srdf.xacro')
     
-    with open(srdf_path, 'r') as f:
-        srdf_content = f.read()
+    # with open(srdf_path, 'r') as f:
+    #     srdf_content = f.read()
     
-    # 3. Define the line to inject
-    new_eef_line = '    <end_effector name="arm_0_eef" parent_link="arm_0_end_effector_link" group="arm_0_gripper"/>\n'
+    # # 3. Define the line to inject
+    # new_eef_line = '    <end_effector name="arm_0_eef" parent_link="arm_0_end_effector_link" group="arm_0_gripper"/>\n'
 
-    modified_srdf = srdf_content.replace('</robot>', f'{new_eef_line}</robot>')
+    # modified_srdf = srdf_content.replace('</robot>', f'{new_eef_line}</robot>')
 
-    robot_description_semantic = {
-        'robot_description_semantic': modified_srdf
-    }
+    # robot_description_semantic = {
+    #     'robot_description_semantic': modified_srdf
+    # }
 
-    moveit_config_file =  os.path.join(setup_path_str,'manipulators','config','moveit.yaml')
-    control_config_file =  os.path.join(setup_path_str,'manipulators','config','control.yaml')
-    
+    # moveit_config_file =  os.path.join(setup_path_str,'manipulators','config','moveit.yaml')
+    # control_config_file =  os.path.join(setup_path_str,'manipulators','config','control.yaml')
+    robot_description_semantic= {
+        'robot_description_semantic': xacro.process_file(
+            os.path.join(get_package_share_directory('mtc_tutorial'),'srdf','custom_robot.srdf')
+            ).toxml()
+        }
+    moveit_config_file =  os.path.join(get_package_share_directory('mtc_tutorial'), 'config', 'moveit.yaml')
+    control_config_file =  os.path.join(get_package_share_directory('mtc_tutorial'), 'config', 'ros2_controllers.yaml')
     with open(moveit_config_file, 'r') as file:
         moveit_yaml_content = yaml.safe_load(file)
 

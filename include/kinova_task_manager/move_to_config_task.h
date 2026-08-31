@@ -82,6 +82,8 @@ public:
 	bool execute();
 
 	bool setTargetConfig(const std::string& target_config);
+	
+	void preempt() { if (task_) task_->preempt(); }
 
 private:
 	std::string task_name_;

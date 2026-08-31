@@ -23,6 +23,8 @@ find_package(moveit_ros_planning REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_task_constructor_msgs REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
+#for fault 
+find_package(example_interfaces REQUIRED)
 
 # pick and place
 add_library(${PROJECT_NAME}_pick_place_task SHARED src/pick_place_task.cpp)
@@ -79,6 +81,7 @@ endfunction()
 # demo(fallbacks_move_to)
 # demo(move_to_config_task)
 # demo(pick_place_demo)
+#######################uncomment from here
 demo(manipulator_action_server) 
 
 # target_link_libraries(${PROJECT_NAME}_pick_place_task pick_place_demo_parameters)
@@ -101,13 +104,19 @@ ament_target_dependencies(${PROJECT_NAME}_manipulator_action_server
   moveit_ros_planning_interface
   moveit_task_constructor_core
   status_interfaces
+  example_interfaces
 )
-
-
 
 # test client
 add_executable(manipulator_test_client src/manipulator_test_client.cpp)
 ament_target_dependencies(manipulator_test_client
+  rclcpp
+  rclcpp_action
+  status_interfaces
+)
+# test client (IMAGE DETECTION HARVEST)
+add_executable(test_harvest_image_client src/test_harvest_image_client.cpp)
+ament_target_dependencies(test_harvest_image_client
   rclcpp
   rclcpp_action
   status_interfaces
@@ -117,6 +126,7 @@ ament_target_dependencies(manipulator_test_client
 # 4. Install rule
 install(TARGETS
   manipulator_test_client
+  test_harvest_image_client
   DESTINATION lib/${PROJECT_NAME})
 
 # target_include_directories(manipulator_test_client PUBLIC

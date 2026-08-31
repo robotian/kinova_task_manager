@@ -11,10 +11,12 @@
 
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
+  <depend>example_interfaces</depend>
   <depend>moveit_ros_planning_interface</depend>
   <depend>geometry_msgs</depend>
   <depend>status_interfaces</depend>
   <depend>rosidl_default_generators</depend>
+  <depend>moveit_task_constructor_core</depend>
 
   <member_of_group>rosidl_interface_packages</member_of_group>
 

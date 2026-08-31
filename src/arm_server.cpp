@@ -112,20 +112,20 @@ private:
   mtc::Task task_;
 
 
-  std::string eef_name = "arm_0_eef"; 
-  std::string arm_group_name = "arm_0";
-  std::string hand_group_name = "arm_0_gripper";
-  std::string hand_frame = "arm_0_end_effector_link";
+  std::string eef_name = "end_effector"; 
+  std::string arm_group_name = "arm";
+  std::string hand_group_name = "Gripper";
+  std::string hand_frame = "arm_end_effector_link";
 
-  std::vector<std::string> missing_links ={
-    "chassis_link", 
-    "right_suspension_beam_link",
-    "camera_0_camera_center",
-    "arch_link",
-    "fath_pivot_0_link",
-    "estop_link",
-    "wireless_charger_link"    
-  };
+  // std::vector<std::string> missing_links ={
+  //   "chassis_link", 
+  //   "right_suspension_beam_link",
+  //   "camera_0_camera_center",
+  //   "arch_link",
+  //   "fath_pivot_0_link",
+  //   "estop_link",
+  //   "wireless_charger_link"    
+  // };
 
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID &, 
@@ -154,7 +154,7 @@ private:
     {
       moveit_msgs::msg::CollisionObject object;
       object.id = "object";
-      object.header.frame_id = "arm_0_base_link";
+      object.header.frame_id = "arm_base_link";
       object.primitives.resize(1);
       object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
       object.primitives[0].dimensions = { 0.05, 0.01 };
@@ -212,7 +212,7 @@ private:
     }else{
       // 1. Create the collision object message
       moveit_msgs::msg::CollisionObject collision_object;
-      collision_object.header.frame_id = "arm_0_base_link"; // Use your robot's base frame
+      collision_object.header.frame_id = "arm_base_link"; // Use your robot's base frame
       collision_object.id = object_id;
 
       // collision_object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
@@ -248,41 +248,41 @@ private:
     }
   }
 
-  void patchSrdf(){
-    // ------------------------------------------------------------------------
-    // SRDF PATCHING (Inject <end_effector> AND <group> if missing)
-    // ------------------------------------------------------------------------
-    std::string srdf_param_name = "robot_description_semantic";
-    std::string srdf_string;
-    bool srdf_needs_update = false;
+  // void patchSrdf(){
+  //   // ------------------------------------------------------------------------
+  //   // SRDF PATCHING (Inject <end_effector> AND <group> if missing)
+  //   // ------------------------------------------------------------------------
+  //   std::string srdf_param_name = "robot_description_semantic";
+  //   std::string srdf_string;
+  //   bool srdf_needs_update = false;
     
     
-    // 1. Get current SRDF
-    if (this->has_parameter(srdf_param_name)) {
-        srdf_string = this->get_parameter(srdf_param_name).as_string();
-    } else {
-        try {
-            srdf_string = this->declare_parameter<std::string>(srdf_param_name, "");
-        } catch(...) {}
-    }
+  //   // 1. Get current SRDF
+  //   if (this->has_parameter(srdf_param_name)) {
+  //       srdf_string = this->get_parameter(srdf_param_name).as_string();
+  //   } else {
+  //       try {
+  //           srdf_string = this->declare_parameter<std::string>(srdf_param_name, "");
+  //       } catch(...) {}
+  //   }
 
-    // 2. Patch 1: Add End Effector if missing
-    // std::string eef_name = "manual_eef"; 
-    if (!srdf_string.empty() && srdf_string.find("<end_effector") == std::string::npos) {
-        std::string eef_patch = R"(<end_effector name="arm_0_eef" parent_link="arm_0_end_effector_link" group="arm_0_gripper"/>)";
-        size_t pos = srdf_string.rfind("</robot>");
-        if (pos != std::string::npos) {
-            srdf_string.insert(pos, eef_patch);
-            srdf_needs_update = true;
-            RCLCPP_INFO(LOGGER, "Patched SRDF: Added manual_eef.");
-        }
-    }
+  //   // 2. Patch 1: Add End Effector if missing
+  //   // std::string eef_name = "manual_eef"; 
+  //   if (!srdf_string.empty() && srdf_string.find("<end_effector") == std::string::npos) {
+  //       std::string eef_patch = R"(<end_effector name="arm_0_eef" parent_link="arm_0_end_effector_link" group="arm_0_gripper"/>)";
+  //       size_t pos = srdf_string.rfind("</robot>");
+  //       if (pos != std::string::npos) {
+  //           srdf_string.insert(pos, eef_patch);
+  //           srdf_needs_update = true;
+  //           RCLCPP_INFO(LOGGER, "Patched SRDF: Added manual_eef.");
+  //       }
+  //   }
 
-    // 4. Apply Parameter Update if needed
-    if (srdf_needs_update) {
-        this->set_parameter(rclcpp::Parameter(srdf_param_name, srdf_string));
-    }
-  }
+  //   // 4. Apply Parameter Update if needed
+  //   if (srdf_needs_update) {
+  //       this->set_parameter(rclcpp::Parameter(srdf_param_name, srdf_string));
+  //   }
+  // }
 
   mtc::Task createTask(){
     mtc::Task task;
@@ -463,8 +463,9 @@ private:
           
           // For below error changing min_fraction to 0.01
           // [manipulator_action_server-1] Failing stage(s):
-          // [manipulator_action_server-1] approach object (0/2): CartesianPath: min_fraction not met. Achieved: 0.032258
-          stage->setMinMaxDistance(0.01, 0.2);
+          // [manipulator_action_server-1] approach object (0/3): CartesianPath: min_fraction not met. Achieved: 0.032258
+          // [manipulator_action_server-1] min_distance not reached (0.00484 < 0.01)
+          stage->setMinMaxDistance(0.001, 0.2);
     
           // Set hand forward direction
           geometry_msgs::msg::Vector3Stamped vec;
@@ -483,9 +484,9 @@ private:
                                      ->getLinkModelNamesWithCollisionGeometry(),  //https://docs.ros.org/en/noetic/api/moveit_task_constructor_core/html/cpp/modify__planning__scene_8cpp_source.html
                                  true);
           // misc. links
-          for(const auto& link: missing_links){
-            stage->allowCollisions(link,task.getRobotModel()->getLinkModelNamesWithCollisionGeometry(), true);
-          }
+          // for(const auto& link: missing_links){
+          //   stage->allowCollisions(link,task.getRobotModel()->getLinkModelNamesWithCollisionGeometry(), true);
+          // }
           grasp->insert(std::move(stage));
         }
 
@@ -569,7 +570,7 @@ private:
     target_pose_stage->setMonitoredStage(current_state_ptr); 
 
     geometry_msgs::msg::PoseStamped target_pose;
-    target_pose.header.frame_id = "arm_0_base_link";
+    target_pose.header.frame_id = "arm_base_link";
     target_pose.header.stamp = this->now();
     target_pose.pose.position.x = 0.0;
     target_pose.pose.position.y = 0.3;

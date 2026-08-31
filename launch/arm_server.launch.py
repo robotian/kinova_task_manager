@@ -4,8 +4,9 @@ import xacro
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
 from clearpath_config.clearpath_config import ClearpathConfig
 from moveit_configs_utils import MoveItConfigsBuilder
@@ -32,21 +33,26 @@ def launch_setup(context, *args, **kwargs):
         'robot_description': xacro.process_file(urdf_path).toxml()
     }
 
-    srdf_path = os.path.join(setup_path_str, 'robot.srdf')
-    if not os.path.exists(srdf_path):
-        srdf_path = os.path.join(setup_path_str, 'robot.srdf.xacro')
+    # srdf_path = os.path.join(setup_path_str, 'robot.srdf')
+    # if not os.path.exists(srdf_path):
+    #     srdf_path = os.path.join(setup_path_str, 'robot.srdf.xacro')
 
-    robot_description_semantic = {
-        'robot_description_semantic': xacro.process_file(srdf_path).toxml()
-    }
-
-    moveit_config_file =  os.path.join(setup_path_str,'manipulators','config','moveit.yaml')
-    control_config_file =  os.path.join(setup_path_str,'manipulators','config','control.yaml')
+    # robot_description_semantic = {
+    #     'robot_description_semantic': xacro.process_file(srdf_path).toxml()
+    # }
+        # Semantic Robot Description
+    robot_description_semantic= {
+        'robot_description_semantic': xacro.process_file(
+            os.path.join(get_package_share_directory('mtc_tutorial'),'srdf','custom_robot.srdf')
+            ).toxml()
+        }
+    moveit_config_file =  os.path.join(get_package_share_directory('mtc_tutorial'), 'config', 'moveit.yaml')
+    control_config_file =  os.path.join(get_package_share_directory('mtc_tutorial'), 'config', 'ros2_controllers.yaml')
     
     with open(moveit_config_file, 'r') as file:
         moveit_yaml_content = yaml.safe_load(file)
 
-    moveit_params = moveit_yaml_content['a300_00036']['move_group']['ros__parameters']
+    moveit_params = moveit_yaml_content['a200_0284']['move_group']['ros__parameters']
 
 
 
